@@ -5,40 +5,33 @@ export const dynamic="force-dynamic";
 
 function normalize(v=""){return String(v).trim().toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g,"").replace(/&/g," and ").replace(/[^a-z0-9]+/g," ").trim().replace(/\s+/g," ")}
 function normalizeTin(v=""){return String(v).trim().toUpperCase()}
-
+function validDate(value){
+ const s=String(value||"");
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return false;
+ const d=new Date(`${s}T12:00:00Z`);
+ if(Number.isNaN(d.getTime())||d.toISOString().slice(0,10)!==s)return false;
+ const year=Number(s.slice(0,4));
+ return year>=1900 && d.getTime()<=Date.now()+86400000;
+}
 async function findTaxpayer(sql,taxpayerId){
  const tin=normalizeTin(taxpayerId);
  if(!/^RC-TIN-\d{4}-\d{6}$/.test(tin))return null;
- try{
-   const rows=await sql`
-    SELECT account
-    FROM rcdf_portal_state s
-    CROSS JOIN LATERAL jsonb_array_elements(COALESCE(s.state->'accounts','[]'::jsonb)) account
-    WHERE s.id=1 AND UPPER(account->>'taxpayerId')=${tin}
-    LIMIT 1
-   `;
-   return rows[0]?.account||null;
- }catch(error){
-   console.error("Taxpayer lookup failed",error);
-   return null;
- }
+ const rows=await sql`
+  SELECT account
+  FROM rcdf_portal_state s
+  CROSS JOIN LATERAL jsonb_array_elements(COALESCE(s.state->'accounts','[]'::jsonb)) account
+  WHERE s.id=1 AND UPPER(account->>'taxpayerId')=${tin}
+  LIMIT 1`;
+ return rows[0]?.account||null;
 }
 
 export async function GET(req){
  try{
-  await ensureDatabase();const sql=db();
-  const {searchParams}=new URL(req.url);
-  const taxpayerId=searchParams.get("taxpayerId");
+  await ensureDatabase();const sql=db(),{searchParams}=new URL(req.url),taxpayerId=searchParams.get("taxpayerId");
   if(taxpayerId){
     const account=await findTaxpayer(sql,taxpayerId);
     if(!account)return NextResponse.json({valid:false,error:"Taxpayer ID not found."},{status:404});
-    return NextResponse.json({valid:true,taxpayer:{
-      taxpayerId:account.taxpayerId,
-      economicProfileId:account.id,
-      legalName:account.holder,
-      classification:account.classification||null,
-      status:account.status||null
-    }});
+    return NextResponse.json({valid:true,taxpayer:{taxpayerId:account.taxpayerId,economicProfileId:account.id,legalName:account.holder,classification:account.classification||null,status:account.status||null}});
   }
   const rows=await sql`SELECT code,name,rate_basis_points,description FROM county_tax_rules WHERE active=TRUE ORDER BY sort_order,name`;
   return NextResponse.json({rules:rows});
@@ -47,13 +40,9 @@ export async function GET(req){
 
 export async function POST(req){
  try{
-  await ensureDatabase();const b=await req.json();const sql=db();
-  const activityCode=String(b.categoryCode||"").trim(),direction=b.direction==="expense"?"expense":"income",
-    amount=Number(b.amount),reporter=String(b.reporterName||"").trim(),description=String(b.description||"").trim(),
-    noTaxpayerId=Boolean(b.noTaxpayerId),requestedTin=normalizeTin(b.taxpayerId);
-
-  if(!activityCode||!reporter||!Number.isFinite(amount)||amount<=0)
-    return NextResponse.json({error:"Reporter, activity classification and a positive amount are required."},{status:400});
+  await ensureDatabase();const b=await req.json(),sql=db();
+  const reporter=String(b.reporterName||"").trim(),noTaxpayerId=Boolean(b.noTaxpayerId),requestedTin=normalizeTin(b.taxpayerId);
+  if(!reporter)return NextResponse.json({error:"Reporter / responsible person is required."},{status:400});
   if(!b.certified)return NextResponse.json({error:"Certification is required before filing."},{status:400});
 
   let businessName="",economicProfileId=null,taxpayerId=null,unregistered=false;
@@ -61,9 +50,7 @@ export async function POST(req){
     if(!requestedTin)return NextResponse.json({error:"A Riverside Taxpayer ID is required or the unregistered filing path must be selected."},{status:400});
     const account=await findTaxpayer(sql,requestedTin);
     if(!account)return NextResponse.json({error:"The Riverside Taxpayer ID could not be validated."},{status:400});
-    businessName=String(account.holder||"").trim();
-    economicProfileId=String(account.id||"").trim()||null;
-    taxpayerId=String(account.taxpayerId||requestedTin).trim().toUpperCase();
+    businessName=String(account.holder||"").trim();economicProfileId=String(account.id||"").trim()||null;taxpayerId=String(account.taxpayerId||requestedTin).trim().toUpperCase();
     if(!businessName||!economicProfileId)return NextResponse.json({error:"The taxpayer profile is incomplete and cannot be used for public filing."},{status:409});
   }else{
     businessName=String(b.businessName||"").trim();
@@ -71,33 +58,50 @@ export async function POST(req){
     unregistered=true;
   }
 
-  const rr=await sql`SELECT code,name,rate_basis_points,description FROM county_tax_rules WHERE code=${activityCode} AND active=TRUE LIMIT 1`;
-  if(!rr.length)return NextResponse.json({error:"Unknown tax category."},{status:400});
+  const rawLines=Array.isArray(b.lines)&&b.lines.length?b.lines:[{occurredAt:b.occurredAt,categoryCode:b.categoryCode,direction:b.direction,amount:b.amount,description:b.description}];
+  if(rawLines.length>25)return NextResponse.json({error:"A single filing may contain at most 25 activity lines."},{status:400});
 
-  const rule=rr[0],signed=direction==="expense"?-amount:amount,
-    taxRate=Number(rule.rate_basis_points)/10000,
-    tax=Math.round(signed*taxRate*100)/100,n=normalize(businessName);
+  const rules=await sql`SELECT code,name,rate_basis_points,description FROM county_tax_rules WHERE active=TRUE`;
+  const ruleMap=new Map(rules.map(r=>[r.code,r]));
+  const lines=[];
+  for(let i=0;i<rawLines.length;i++){
+    const source=rawLines[i]||{},categoryCode=String(source.categoryCode||"").trim(),direction=source.direction==="expense"?"expense":"income",
+      amount=Number(source.amount),occurredAt=String(source.occurredAt||"").trim(),description=String(source.description||"").trim();
+    const rule=ruleMap.get(categoryCode);
+    if(!rule)return NextResponse.json({error:`Line ${i+1}: unknown activity classification.`},{status:400});
+    if(!validDate(occurredAt))return NextResponse.json({error:`Line ${i+1}: transaction date must be a valid four-digit year between 1900 and today.`},{status:400});
+    if(!Number.isFinite(amount)||amount<=0)return NextResponse.json({error:`Line ${i+1}: amount must be greater than zero.`},{status:400});
+    const rate=Number(rule.rate_basis_points)/10000;
+    lines.push({lineNumber:i+1,categoryCode,direction,amount,occurredAt,description,rule,rate,
+      grossAmount:direction==="expense"?-amount:amount,
+      taxAmount:direction==="income"?Math.round(amount*rate*100)/100:0,
+      deductionAmount:direction==="expense"?amount:0,
+      deductionEffect:direction==="expense"?Math.round(amount*rate*100)/100:0});
+  }
 
-  const rows=await sql`
-    INSERT INTO county_business_tax_ledger
-      (source,record_kind,business_name,normalized_business_name,filer_name,player_name,
-       activity_code,direction,gross_amount,tax_rate,tax_amount,payment_amount,
-       occurred_at,description,economic_profile_id,taxpayer_id,metadata)
-    VALUES
-      ('county_public_filing','activity',${businessName},${n},${reporter},${reporter},
-       ${activityCode},${direction},${signed},${taxRate},${tax},0,
-       ${b.occurredAt||new Date().toISOString()},${description},${economicProfileId},${taxpayerId},
-       ${JSON.stringify({
-         certified:true,contact:b.contact||"",ruleName:rule.name,
-         taxpayerResolution:unregistered?"unregistered_manual":"validated_taxpayer_id",
-         unregisteredTaxpayer:unregistered
-       })}::jsonb)
-    RETURNING public_id,tax_amount,economic_profile_id,taxpayer_id,business_name
-  `;
-  return NextResponse.json({
-    ok:true,reference:rows[0].public_id,taxImpact:Number(rows[0].tax_amount),
-    linkedProfile:rows[0].economic_profile_id||null,taxpayerId:rows[0].taxpayer_id||null,
-    businessName:rows[0].business_name
-  });
+  const sequence=await sql`SELECT nextval('county_business_filing_seq')::bigint AS value`;
+  const filingReference=`RC-BT-${new Date().getFullYear()}-${String(sequence[0].value).padStart(7,"0")}`;
+  const normalized=normalize(businessName);
+  const ids=[];
+  for(const line of lines){
+    const rows=await sql`
+      INSERT INTO county_business_tax_ledger
+        (source,record_kind,business_name,normalized_business_name,filer_name,player_name,
+         activity_code,direction,gross_amount,tax_rate,tax_amount,deduction_amount,payment_amount,
+         occurred_at,description,economic_profile_id,taxpayer_id,filing_reference,metadata)
+      VALUES
+        ('county_public_filing','activity',${businessName},${normalized},${reporter},${reporter},
+         ${line.categoryCode},${line.direction},${line.grossAmount},${line.rate},${line.taxAmount},${line.deductionAmount},0,
+         ${line.occurredAt},${line.description},${economicProfileId},${taxpayerId},${filingReference},
+         ${JSON.stringify({certified:true,contact:b.contact||"",ruleName:line.rule.name,lineNumber:line.lineNumber,taxpayerResolution:unregistered?"unregistered_manual":"validated_taxpayer_id",unregisteredTaxpayer:unregistered})}::jsonb)
+      RETURNING public_id`;
+    ids.push(rows[0].public_id);
+  }
+
+  const grossAssessment=Math.round(lines.reduce((n,l)=>n+l.taxAmount,0)*100)/100;
+  const deductionEffect=Math.round(lines.reduce((n,l)=>n+l.deductionEffect,0)*100)/100;
+  const netAssessment=Math.max(0,Math.round((grossAssessment-deductionEffect)*100)/100);
+
+  return NextResponse.json({ok:true,reference:filingReference,ledgerReferences:ids,lineCount:lines.length,grossAssessment,deductionEffect,netAssessment,linkedProfile:economicProfileId,taxpayerId,businessName});
  }catch(e){console.error("POST /api/business-filings",e);return NextResponse.json({error:"Filing could not be stored."},{status:500})}
 }

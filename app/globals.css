@@ -60,3 +60,15 @@
   .filing-guidance-box>div+div{border-left:0;border-top:1px solid #c6d0d7}
   .taxpayer-result dl{grid-template-columns:1fr}.taxpayer-result dt{border-bottom:0}
 }
+
+/* County Government v1.0.3 — multi-line return and filing safety */
+.filing-lines-section{margin:16px 0;border:1px solid #9eacb7;background:#f7f9fa}
+.filing-lines-section>header{display:flex;justify-content:space-between;gap:15px;align-items:center;padding:12px 14px;background:#eaf0f4;border-bottom:1px solid #c4cdd4}
+.filing-lines-section>header small{font-size:8px;letter-spacing:.12em;color:#667985}.filing-lines-section>header h3{margin:2px 0;color:#173958}.filing-lines-section>header p{margin:0;font-size:10px;color:#60727e}
+.filing-lines-section>header button{padding:7px 10px;border:1px solid #567f9d;background:#173958;color:#fff;font-weight:700}
+.filing-lines{display:grid;gap:9px;padding:10px}.filing-line{position:relative;border:1px solid #b8c3cb;background:#fff}.filing-line-number{padding:6px 9px;background:#f0f4f7;border-bottom:1px solid #d0d8de;color:#5d7281;font-size:9px;font-weight:800;letter-spacing:.1em}
+.filing-line-grid{display:grid;grid-template-columns:1fr 1.5fr 1.35fr .8fr;gap:9px;padding:11px}.filing-line-grid label{display:grid;gap:4px;font-size:10px;font-weight:700}.filing-line-grid .wide{grid-column:1/-1}.filing-line-grid input,.filing-line-grid select{width:100%}
+.filing-line-guidance{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:start;padding:10px 11px;border-top:1px solid #d3dbe1;background:#f8fafb}.filing-line-guidance>div{display:grid;gap:3px}.filing-line-guidance strong{font-size:10px;color:#173958}.filing-line-guidance span{font-size:9px;line-height:1.45;color:#5b6e7a}.remove-line{padding:6px 8px;border:1px solid #b99b94;background:#fff;color:#84372e}.remove-line:disabled{opacity:.4}
+.filing-accuracy-warning{margin:17px 0;padding:13px 15px;border:2px solid #c19b37;background:#fff8dd;color:#594700}.filing-accuracy-warning strong{font-size:11px;letter-spacing:.08em}.filing-accuracy-warning p{margin:6px 0 0;font-size:11px;line-height:1.55}
+@media(max-width:1000px){.filing-line-grid{grid-template-columns:1fr 1fr}.filing-line-guidance{grid-template-columns:1fr 1fr}.filing-line-guidance .remove-line{grid-column:1/-1;justify-self:end}}
+@media(max-width:650px){.filing-lines-section>header{align-items:stretch;flex-direction:column}.filing-line-grid,.filing-line-guidance{grid-template-columns:1fr}.filing-line-grid .wide,.filing-line-guidance .remove-line{grid-column:1}}

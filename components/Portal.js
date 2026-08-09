@@ -46,7 +46,7 @@ export default function Portal(){
  [q,setQ]=useState(""),[receipt,setReceipt]=useState(null),[selectedAgency,setSelectedAgency]=useState(null),
  [loadNotice,setLoadNotice]=useState(""),[taxpayerMode,setTaxpayerMode]=useState("tin"),
  [taxpayerId,setTaxpayerId]=useState(""),[taxpayer,setTaxpayer]=useState(null),[taxpayerStatus,setTaxpayerStatus]=useState("idle"),
- [selectedRuleCode,setSelectedRuleCode]=useState(""),[direction,setDirection]=useState("income");
+ [filingLines,setFilingLines]=useState([{id:1,occurredAt:"",categoryCode:"",direction:"income",amount:"",description:""}]);
 
  useEffect(()=>{
    let active=true;
@@ -67,7 +67,11 @@ export default function Portal(){
  },[]);
 
  const filtered=useMemo(()=>gov.agencies.filter(a=>!q||`${a.name} ${a.abbreviation} ${a.description} ${a.administrator||""}`.toLowerCase().includes(q.toLowerCase())),[gov,q]);
- const selectedRule=useMemo(()=>rules.find(r=>r.code===selectedRuleCode)||null,[rules,selectedRuleCode]);
+ const today=new Date().toISOString().slice(0,10);
+ const lineRule=line=>rules.find(r=>r.code===line.categoryCode)||null;
+ const updateLine=(id,key,value)=>setFilingLines(rows=>rows.map(row=>row.id===id?{...row,[key]:value}:row));
+ const addLine=()=>setFilingLines(rows=>[...rows,{id:Date.now()+Math.random(),occurredAt:"",categoryCode:"",direction:"income",amount:"",description:""}]);
+ const removeLine=id=>setFilingLines(rows=>rows.length<=1?rows:rows.filter(row=>row.id!==id));
  const openHelp=k=>setDrawer(helpData[k]||["Information","This area provides public Riverside County information and services."]);
 
  async function validateTaxpayer(){
@@ -88,13 +92,15 @@ export default function Portal(){
    e.preventDefault();const f=new FormData(e.currentTarget);const payload=Object.fromEntries(f.entries());
    payload.certified=f.get("certified")==="on";payload.noTaxpayerId=taxpayerMode==="manual";
    payload.taxpayerId=taxpayerMode==="tin"?taxpayerId.trim().toUpperCase():"";
+   payload.lines=filingLines.map(({occurredAt,categoryCode,direction,amount,description})=>({occurredAt,categoryCode,direction,amount:Number(amount),description}));
    if(taxpayerMode==="tin"&&taxpayerStatus!=="valid")return alert("Validate the Riverside Taxpayer ID before submitting this filing.");
+   if(payload.lines.some(line=>!line.occurredAt||!line.categoryCode||!Number.isFinite(line.amount)||line.amount<=0))return alert("Complete the date, classification and positive amount for every activity line.");
    const r=await fetch("/api/business-filings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
    const p=await r.json().catch(()=>({}));if(!r.ok)return alert(p.error||"Submission failed");
    setReceipt(p);
    e.currentTarget.reset();
-   setSelectedRuleCode("");setDirection("income");
-   if(taxpayerMode==="manual"){setTaxpayer(null)} // keep validated TIN visible for repeat filings
+   setFilingLines([{id:Date.now(),occurredAt:"",categoryCode:"",direction:"income",amount:"",description:""}]);
+   if(taxpayerMode==="manual"){setTaxpayer(null)}
  }
  function openAgency(a){setSelectedAgency(a)}
  function restartVideo(e){const v=e.currentTarget;try{v.currentTime=2;v.play().catch(()=>{})}catch{}}
@@ -126,7 +132,7 @@ export default function Portal(){
     </section>
     <section className="direction-guide">
       <article><span className="direction-symbol income">+</span><div><h3>Income / taxable receipt</h3><p>Use this for money or value received through sales, services, rentals, contracts, admissions, or other reportable business receipts. The selected activity classification determines the tax impact calculated on that incoming amount.</p></div></article>
-      <article><span className="direction-symbol expense">−</span><div><h3>Expense / allowable outflow</h3><p>Use this only for a business outflow that is reportable or deductible under the applicable county schedule. An expense is recorded as negative activity; it is not the same thing as paying an assessed county tax bill.</p></div></article>
+      <article><span className="direction-symbol expense">−</span><div><h3>Expense / potentially allowable deduction</h3><p>Use this for an ordinary business outflow that may reduce the taxable business base under the applicable county schedule. It is recorded as a deduction candidate, not as a negative tax payment, and it can reduce the calculated assessment only down to zero.</p></div></article>
     </section>
     <div className="tax-classification-grid">{rules.map(rule=><article key={rule.code}><header><span>{rule.code.replaceAll("_"," ")}</span><strong>{rateLabel(rule)}</strong></header><h3>{rule.name}</h3><p>{rule.description||"County business activity classification."}</p><div className="tax-classification-example"><b>Choose this when:</b> {rule.code==="RETAIL_SALES"?"The transaction is a sale of goods to a customer.":rule.code==="PROFESSIONAL_SERVICES"?"The business is being paid for advisory, professional, technical, or specialist work.":rule.code==="CONTRACTING"?"The reported activity comes from construction, repair, installation, or contractor work.":rule.code==="HOSPITALITY"?"The activity concerns lodging, accommodation, or hospitality services.":rule.code==="FOOD_BEVERAGE"?"The amount comes from prepared food, restaurant, catering, or beverage activity.":rule.code==="ENTERTAINMENT"?"The activity involves events, admission, recreation, or entertainment.":rule.code==="VEHICLE_RENTAL"?"The business receives or reports value from renting vehicles or equipment.":rule.code==="PROPERTY_TRANSFER"?"The filing concerns a qualifying transfer of property or a property interest.":rule.code==="UTILITIES"?"The activity relates to utility or infrastructure services.":rule.code==="DIGITAL_COMMERCE"?"The transaction occurred through online commerce, digital products, a platform, or electronic service.":rule.code==="LUXURY_GOODS"?"The activity involves designated luxury or high-value goods.":rule.code==="LICENSED_ACTIVITY"?"The transaction arises from an activity conducted under a county permit or license.":"No more specific classification accurately describes the ordinary business receipt."}</div></article>)}</div>
     <section className="tax-guide-note"><strong>Important:</strong><p>The activity rate shown here is the rate currently configured in the Riverside County financial system for this filing classification. This guide helps select a portal category; it does not replace a formal notice, assessment, exemption decision, or specific instruction issued by the Department of Finance.</p></section>
@@ -148,15 +154,30 @@ export default function Portal(){
       </section>
 
       <div className="row two"><label>Reporter / responsible person<input name="reporterName" required/></label><label>Contact reference<input name="contact"/></label></div>
-      <div className="row three"><label>Transaction date<input name="occurredAt" type="date" required/></label><label>Activity classification<select name="categoryCode" required value={selectedRuleCode} onChange={e=>setSelectedRuleCode(e.target.value)}><option value="" disabled>Select category</option>{rules.map(r=><option key={r.code} value={r.code}>{r.name} — {rateLabel(r)}</option>)}</select><small className="field-note">{rules.length} active categories loaded · <button type="button" className="inline-guide-link" onClick={()=>setTab("taxes")}>Need help choosing?</button></small></label><label>Entry type<select name="direction" value={direction} onChange={e=>setDirection(e.target.value)}><option value="income">Income / taxable receipt (+)</option><option value="expense">Expense / allowable outflow (−)</option></select></label></div>
-
-      {(selectedRule||direction)&&<section className="filing-guidance-box"><div><small>FILING GUIDANCE</small><strong>{selectedRule?`${selectedRule.name} · ${rateLabel(selectedRule)}`:"Choose an activity classification"}</strong><p>{selectedRule?.description||"Select the business activity that most closely describes the transaction."}</p></div><div><small>ENTRY TYPE</small><strong>{direction==="expense"?"Expense / allowable outflow":"Income / taxable receipt"}</strong><p>{directionHelp(direction)}</p></div></section>}
-
-      <div className="amount-row"><span>Reportable amount</span><span>$</span><input name="amount" type="number" step="0.01" min="0.01" required/></div>
-      <label className="description">Description of transaction<textarea name="description" rows="5" placeholder="Describe the transaction, service, sale, contract, expense, or other reportable activity."/></label>
-      <div className="cert"><label><input type="checkbox" name="certified" required/> I certify that the information provided in this filing is accurate to the best of my knowledge and is submitted on behalf of the identified taxpayer or named unregistered business.</label></div>
+      <section className="filing-lines-section">
+        <header><div><small>SECTION B</small><h3>Business Activity Lines</h3><p>A single return may contain multiple activities or tax classifications. Add a separate line whenever the date, classification, direction, amount, or description differs.</p></div><button type="button" onClick={addLine}>＋ Add activity line</button></header>
+        <div className="filing-lines">
+          {filingLines.map((line,index)=>{const rule=lineRule(line);const amount=Number(line.amount||0);const estimated=rule?amount*(Number(rule.rate_basis_points||0)/10000):0;return <article className="filing-line" key={line.id}>
+            <div className="filing-line-number">LINE {index+1}</div>
+            <div className="filing-line-grid">
+              <label>Transaction date<input type="date" value={line.occurredAt} min="1900-01-01" max={today} onChange={e=>updateLine(line.id,"occurredAt",e.target.value)} required/></label>
+              <label>Activity classification<select value={line.categoryCode} onChange={e=>updateLine(line.id,"categoryCode",e.target.value)} required><option value="" disabled>Select category</option>{rules.map(r=><option key={r.code} value={r.code}>{r.name} — {rateLabel(r)}</option>)}</select><small className="field-note"><button type="button" className="inline-guide-link" onClick={()=>setTab("taxes")}>Need help choosing?</button></small></label>
+              <label>Entry type<select value={line.direction} onChange={e=>updateLine(line.id,"direction",e.target.value)}><option value="income">Income / taxable receipt (+)</option><option value="expense">Expense / potentially allowable deduction</option></select></label>
+              <label>Amount ($)<input type="number" step="0.01" min="0.01" value={line.amount} onChange={e=>updateLine(line.id,"amount",e.target.value)} required/></label>
+              <label className="wide">Description<input value={line.description} onChange={e=>updateLine(line.id,"description",e.target.value)} placeholder="Describe the sale, service, contract, expense, or other business activity."/></label>
+            </div>
+            <div className="filing-line-guidance">
+              <div><strong>{rule?rule.name:"Choose a classification"}</strong><span>{rule?.description||"The selected classification determines how this line is treated."}</span></div>
+              <div>{line.direction==="expense"?<><strong>Potential deduction</strong><span>{amount>0?`$${amount.toFixed(2)} reported as a deduction candidate. Estimated reduction of the line's assessment: up to $${estimated.toFixed(2)}; never a negative tax credit.`:"Enter an amount to see the potential deduction effect."}</span></>:<><strong>Estimated assessment</strong><span>{amount>0&&rule?`Approximately $${estimated.toFixed(2)} on this line before deductions and payments.`:"Enter an amount and classification to estimate the assessment."}</span></>}</div>
+              <button type="button" className="remove-line" disabled={filingLines.length<=1} onClick={()=>removeLine(line.id)}>Remove line</button>
+            </div>
+          </article>})}
+        </div>
+      </section>
+      <div className="filing-accuracy-warning"><strong>DOUBLE-CHECK YOUR FILING BEFORE SUBMISSION</strong><p>Please review every Taxpayer ID, legal name, transaction date, amount, classification, direction and description at least twice — and preferably a third time for important filings. Misspelled names, transposed digits, an incorrect year, or the wrong activity classification can cause the transaction to be associated with the wrong record or require a later correction by the Department of Finance.</p></div>
+      <div className="cert"><label><input type="checkbox" name="certified" required/> I certify that I reviewed the information above and that it is accurate to the best of my knowledge and submitted on behalf of the identified taxpayer or named unregistered business.</label></div>
       <button className="submit-return">SUBMIT BUSINESS RETURN</button>
-      {receipt&&<div className="receipt"><strong>Filing received: {receipt.reference}</strong><span>Registered taxpayer: {receipt.taxpayerId||"Not provided"}</span><span>Recorded taxpayer name: {receipt.businessName}</span><span>Calculated tax impact: ${Number(receipt.taxImpact).toFixed(2)}</span><span>{receipt.linkedProfile?`Automatically linked to Wirtschaftsprofil ${receipt.linkedProfile}.`:"Unregistered filing — awaiting any necessary manual RinCEN review."}</span></div>}
+      {receipt&&<div className="receipt"><strong>Filing received: {receipt.reference}</strong><span>Registered taxpayer: {receipt.taxpayerId||"Not provided"}</span><span>Recorded taxpayer name: {receipt.businessName}</span><span>Gross estimated assessment: ${Number(receipt.grossAssessment||0).toFixed(2)}</span><span>Estimated deduction effect: −${Number(receipt.deductionEffect||0).toFixed(2)}</span><span>Net estimated assessment: ${Number(receipt.netAssessment||0).toFixed(2)}</span><span>Activity lines filed: {receipt.lineCount||1}</span><span>{receipt.linkedProfile?`Automatically linked to Wirtschaftsprofil ${receipt.linkedProfile}.`:"Unregistered filing — awaiting any necessary manual RinCEN review."}</span></div>}
     </form>
   </main>}
 
