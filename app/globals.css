@@ -19,3 +19,44 @@
 .agency-modal>article>footer{min-height:0;padding:10px 16px;background:#eef3f6;color:#526775}.agency-modal>article>footer button{margin-left:auto;padding:7px 12px}
 .field-note{display:block;margin-top:4px;color:#61737f;font-size:9px;font-weight:400}
 @media(max-width:700px){.agency-modal-body{grid-template-columns:1fr}.agency-modal-body dl{grid-template-columns:1fr}.agency-modal-body dt{border-bottom:0}}
+
+
+/* County Government v1.0.2 — exact RinCEN trust banner */
+.official-trust-banner{
+  min-height:28px;padding:5px 16px;display:flex;align-items:center;gap:8px;
+  background:#f0f4f8;color:#1a2b4c;border-bottom:1px solid #b8c4ce;font-size:11px
+}
+.official-trust-banner .trust-flag{
+  width:22px!important;height:14px!important;display:block;object-fit:cover;
+  border:1px solid #8c99a5;flex:0 0 auto
+}
+.trust-how{padding:0;border:0;background:transparent;color:#005ea2;text-decoration:underline;font-size:11px;cursor:pointer}
+.nav-help-toggle{margin-left:auto;border:1px solid #9baab5;background:#f5f7f9;color:#234b67;padding:6px 9px;font-size:10px}
+
+.taxpayer-identification{margin:0 0 18px;border:1px solid #9eacb7;background:#f8fafb}
+.taxpayer-identification-head{display:flex;justify-content:space-between;gap:18px;align-items:center;padding:13px 15px;background:#edf2f5;border-bottom:1px solid #c4cdd4}
+.taxpayer-identification-head small{font-size:9px;letter-spacing:.13em;color:#6a7a85}.taxpayer-identification-head h3{margin:3px 0;color:#173958}.taxpayer-identification-head p{margin:0;color:#60717d;font-size:11px}
+.taxpayer-mode-switch{display:flex}.taxpayer-mode-switch button{padding:7px 10px;border:1px solid #9dacb7;background:#fff;color:#264b65;font-weight:700;font-size:10px}.taxpayer-mode-switch button+button{border-left:0}.taxpayer-mode-switch button.active{background:#005ea2;color:#fff;border-color:#005ea2}
+.taxpayer-lookup,.manual-taxpayer-path{padding:15px}.taxpayer-input-row{display:grid;grid-template-columns:1fr auto;margin-top:5px}.taxpayer-input-row input{border-radius:0}.taxpayer-input-row button{padding:8px 14px;border:1px solid #567f9d;background:#173958;color:#fff;font-weight:700}
+.taxpayer-result{margin-top:12px;padding:12px 14px;border-left:4px solid}.taxpayer-result.valid{background:#eef7f1;border-color:#367a50}.taxpayer-result.invalid{background:#fff1ef;border-color:#a94d43}.taxpayer-result>span{display:block;font-size:9px;letter-spacing:.12em;color:#47705a}.taxpayer-result>strong{display:block;margin:3px 0 8px;font-size:16px;color:#173958}
+.taxpayer-result dl{display:grid;grid-template-columns:140px 1fr;margin:8px 0}.taxpayer-result dt,.taxpayer-result dd{padding:5px;border-bottom:1px solid #d3ddd7}.taxpayer-result dt{font-weight:700}.taxpayer-result dd{margin:0}.taxpayer-result p{margin:8px 0 0;font-size:11px;line-height:1.5;color:#53666f}
+.manual-warning{margin-bottom:12px;padding:11px 13px;border:1px solid #d0b66b;background:#fff7dc;color:#594900}.manual-warning p{margin:5px 0 0;font-size:11px;line-height:1.5}
+
+.inline-guide-link{padding:0;border:0;background:none;color:#005ea2;text-decoration:underline;font:inherit;cursor:pointer}
+.filing-guidance-box{display:grid;grid-template-columns:1fr 1fr;gap:0;margin:13px 0;border:1px solid #b5c0c8;background:#f5f8fa}.filing-guidance-box>div{padding:11px 13px}.filing-guidance-box>div+div{border-left:1px solid #c6d0d7}.filing-guidance-box small{display:block;font-size:8px;letter-spacing:.12em;color:#71828e}.filing-guidance-box strong{display:block;margin:3px 0 5px;color:#173958}.filing-guidance-box p{margin:0;font-size:11px;line-height:1.48;color:#536975}
+
+.tax-guide{padding-bottom:40px}.tax-guide-intro{display:flex;justify-content:space-between;align-items:center;gap:22px;padding:18px 20px;border:1px solid #9daeba;background:#eef3f6}.tax-guide-intro small{font-size:9px;letter-spacing:.13em;color:#667a88}.tax-guide-intro h2{margin:4px 0;color:#173958}.tax-guide-intro p{max-width:760px;margin:0;line-height:1.5;color:#4e6575}.tax-guide-intro button{padding:9px 13px;border:1px solid #00558e;background:#005ea2;color:#fff;font-weight:700;white-space:nowrap}
+.direction-guide{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}.direction-guide article{display:grid;grid-template-columns:52px 1fr;gap:12px;padding:15px;border:1px solid #b7c2ca;background:#fff}.direction-guide h3{margin:0 0 5px;color:#173958}.direction-guide p{margin:0;font-size:11px;line-height:1.5;color:#536975}.direction-symbol{display:grid;place-items:center;width:46px;height:46px;border:1px solid;font-size:24px;font-weight:800}.direction-symbol.income{background:#edf7f0;border-color:#74a183;color:#286a40}.direction-symbol.expense{background:#f8f1ed;border-color:#b98c75;color:#8a4932}
+.tax-classification-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.tax-classification-grid article{border:1px solid #b6c1c9;background:#fff}.tax-classification-grid header{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#eaf0f4;border-bottom:1px solid #c6d0d7}.tax-classification-grid header span{font-size:8px;letter-spacing:.09em;color:#647784}.tax-classification-grid header strong{color:#005ea2}.tax-classification-grid h3{margin:11px 12px 5px;color:#173958;font-size:14px}.tax-classification-grid p{margin:0 12px 10px;font-size:11px;line-height:1.45;color:#576b78}.tax-classification-example{margin:0 12px 12px;padding-top:9px;border-top:1px solid #d8dfe4;font-size:10px;line-height:1.45;color:#495f6e}.tax-guide-note{margin-top:16px;padding:13px 15px;border-left:4px solid #005ea2;background:#eef4f8}.tax-guide-note p{margin:4px 0 0;font-size:11px;line-height:1.5;color:#4f6472}
+
+@media(max-width:900px){
+  .taxpayer-identification-head,.tax-guide-intro{align-items:stretch;flex-direction:column}
+  .taxpayer-mode-switch{align-self:stretch}.taxpayer-mode-switch button{flex:1}
+  .tax-classification-grid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:700px){
+  .official-trust-banner .trust-how{display:none}
+  .taxpayer-input-row,.filing-guidance-box,.direction-guide,.tax-classification-grid{grid-template-columns:1fr}
+  .filing-guidance-box>div+div{border-left:0;border-top:1px solid #c6d0d7}
+  .taxpayer-result dl{grid-template-columns:1fr}.taxpayer-result dt{border-bottom:0}
+}

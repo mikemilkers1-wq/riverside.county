@@ -2,41 +2,51 @@
 import {useEffect,useMemo,useState} from "react";
 
 const FALLBACK_RULES=[
- {code:"GENERAL_RECEIPTS",name:"General Business Receipts",rate_basis_points:500,description:"Allgemeine gewerbliche Einnahmen und sonstige betriebliche Erlöse."},
- {code:"RETAIL_SALES",name:"Retail Sales",rate_basis_points:725,description:"Verkauf von Waren im Einzelhandel."},
- {code:"PROFESSIONAL_SERVICES",name:"Professional Services",rate_basis_points:450,description:"Professionelle oder beratende Dienstleistungen."},
- {code:"CONTRACTING",name:"Contracting & Construction",rate_basis_points:350,description:"Bau-, Reparatur- und Werkleistungen."},
- {code:"HOSPITALITY",name:"Hospitality & Lodging",rate_basis_points:825,description:"Beherbergung und gastgewerbliche Umsätze."},
- {code:"FOOD_BEVERAGE",name:"Food & Beverage",rate_basis_points:650,description:"Speisen, Getränke und gastronomische Umsätze."},
- {code:"ENTERTAINMENT",name:"Entertainment & Events",rate_basis_points:775,description:"Veranstaltungen, Eintritt und Unterhaltung."},
- {code:"VEHICLE_RENTAL",name:"Vehicle & Equipment Rental",rate_basis_points:900,description:"Vermietung von Fahrzeugen und Geräten."},
- {code:"PROPERTY_TRANSFER",name:"Property Transfer",rate_basis_points:125,description:"Meldepflichtige Grundstücks- und Immobilienübertragungen."},
- {code:"UTILITIES",name:"Utilities & Infrastructure",rate_basis_points:300,description:"Versorgungs- und infrastrukturelle Leistungen."},
- {code:"DIGITAL_COMMERCE",name:"Digital Commerce",rate_basis_points:525,description:"Digitale Waren, Plattform- und Onlineumsätze."},
- {code:"LUXURY_GOODS",name:"Luxury & High-Value Goods",rate_basis_points:1100,description:"Luxus- und hochwertige Waren."},
- {code:"LICENSED_ACTIVITY",name:"Licensed / Permit Activity",rate_basis_points:600,description:"Erlaubnis- oder lizenzgebundene Geschäftstätigkeit."}
+ {code:"GENERAL_RECEIPTS",name:"General Business Receipts",rate_basis_points:500,description:"General commercial receipts and other ordinary operating revenue."},
+ {code:"RETAIL_SALES",name:"Retail Sales",rate_basis_points:725,description:"Sales of goods to final customers through retail activity."},
+ {code:"PROFESSIONAL_SERVICES",name:"Professional Services",rate_basis_points:450,description:"Professional, consulting, advisory, technical, or similar service revenue."},
+ {code:"CONTRACTING",name:"Contracting & Construction",rate_basis_points:350,description:"Construction, repair, installation, and contractor activity."},
+ {code:"HOSPITALITY",name:"Hospitality & Lodging",rate_basis_points:825,description:"Hotels, lodging, short-term accommodation, and related hospitality receipts."},
+ {code:"FOOD_BEVERAGE",name:"Food & Beverage",rate_basis_points:650,description:"Restaurant, catering, prepared food, and beverage receipts."},
+ {code:"ENTERTAINMENT",name:"Entertainment & Events",rate_basis_points:775,description:"Admissions, events, performances, recreation, and entertainment receipts."},
+ {code:"VEHICLE_RENTAL",name:"Vehicle & Equipment Rental",rate_basis_points:900,description:"Rental of vehicles, machinery, equipment, and similar property."},
+ {code:"PROPERTY_TRANSFER",name:"Property Transfer",rate_basis_points:125,description:"Reportable transfers of real property or qualifying property interests."},
+ {code:"UTILITIES",name:"Utilities & Infrastructure",rate_basis_points:300,description:"Utility, infrastructure, network, or public-service related receipts."},
+ {code:"DIGITAL_COMMERCE",name:"Digital Commerce",rate_basis_points:525,description:"Online commerce, digital products, platform activity, and electronic services."},
+ {code:"LUXURY_GOODS",name:"Luxury & High-Value Goods",rate_basis_points:1100,description:"Luxury, premium, collectible, or other designated high-value goods."},
+ {code:"LICENSED_ACTIVITY",name:"Licensed / Permit Activity",rate_basis_points:600,description:"Business activity conducted under a county license, permit, or regulated authorization."}
 ];
 
 const helpData={
  announcements:["State & County Announcements","Official public notices published through the Riverside County Government portal. Notices shown here are informational unless the notice itself states a formal legal effect."],
  governance:["County Government","Review the current Governor, cabinet, Senate and ruling party information maintained by the County network. This page is public information and does not provide administrative editing access."],
  agencies:["County Agencies","Browse agencies and departments participating in the Riverside County government network. These entries are loaded from the same shared County Governance record used by RinCEN and participating departmental terminals."],
- business:["Business Transaction Filing","Businesses can report taxable or deductible business activity using this filing form. The submission enters the shared county financial ledger and may be associated with a RinCEN Wirtschaftsprofil by the Department of Finance."],
+ business:["Business Transaction Filing","Report county business activity using a validated Riverside Taxpayer ID whenever one has been issued. The legal taxpayer name is resolved from RinCEN rather than freely entered, reducing duplicate and mismatched financial records."],
+ taxes:["Taxes & Filing Guide","This page explains the county business activity classifications currently configured for public filings. It helps filers choose the closest activity type and understand the difference between reporting income and reporting an allowable business outflow."],
  search:["County Search","Filter the public agency and government information currently loaded on this website. This is not a full records request or court-record search."],
  official:["Official Riverside County Website","This banner identifies the page as part of the Riverside County Government web network. Official county pages use shared government data services where indicated, but each department remains responsible for its own records and authority."]
 };
+
 function Help({topic,enabled,onOpen}){if(!enabled)return null;return <button className="info-dot" title="Information" onClick={()=>onOpen(topic)}>i</button>}
 function agencyLogo(a){
  if(a?.logoPath)return a.logoPath;
  const known={rdof:"/county-governance/rdof-logo.png"};
  return known[a?.logoKey]||"/assets/county-seal.png";
 }
+function rateLabel(rule){return `${(Number(rule?.rate_basis_points||0)/100).toFixed(2)}%`}
+function directionHelp(direction){
+ return direction==="expense"
+  ?"Choose Expense only when the amount represents a reportable business outflow or allowable deduction under the applicable county schedule. The filing records the amount as a negative activity entry; it is not automatically a cash payment to the County."
+  :"Choose Income when the amount represents business receipts, sales, service revenue, rental receipts, or other reportable incoming activity. The selected classification determines the county tax impact calculated for the filing.";
+}
 
 export default function Portal(){
  const [tab,setTab]=useState("home"),[gov,setGov]=useState({agencies:[],government:{}}),[ann,setAnn]=useState([]),
  [rules,setRules]=useState(FALLBACK_RULES),[help,setHelp]=useState(false),[drawer,setDrawer]=useState(null),
  [q,setQ]=useState(""),[receipt,setReceipt]=useState(null),[selectedAgency,setSelectedAgency]=useState(null),
- [loadNotice,setLoadNotice]=useState("");
+ [loadNotice,setLoadNotice]=useState(""),[taxpayerMode,setTaxpayerMode]=useState("tin"),
+ [taxpayerId,setTaxpayerId]=useState(""),[taxpayer,setTaxpayer]=useState(null),[taxpayerStatus,setTaxpayerStatus]=useState("idle"),
+ [selectedRuleCode,setSelectedRuleCode]=useState(""),[direction,setDirection]=useState("income");
 
  useEffect(()=>{
    let active=true;
@@ -48,7 +58,7 @@ export default function Portal(){
      if(!active)return;
      const [g,a,t]=results;
      if(g.status==="fulfilled")setGov(g.value.state||{agencies:[],government:{}});
-     else setLoadNotice("County Governance konnte vorübergehend nicht geladen werden.");
+     else setLoadNotice("County Governance could not be loaded temporarily.");
      if(a.status==="fulfilled")setAnn(a.value.announcements||[]);
      if(t.status==="fulfilled"&&Array.isArray(t.value.rules)&&t.value.rules.length)setRules(t.value.rules);
      else setRules(FALLBACK_RULES);
@@ -57,27 +67,51 @@ export default function Portal(){
  },[]);
 
  const filtered=useMemo(()=>gov.agencies.filter(a=>!q||`${a.name} ${a.abbreviation} ${a.description} ${a.administrator||""}`.toLowerCase().includes(q.toLowerCase())),[gov,q]);
+ const selectedRule=useMemo(()=>rules.find(r=>r.code===selectedRuleCode)||null,[rules,selectedRuleCode]);
  const openHelp=k=>setDrawer(helpData[k]||["Information","This area provides public Riverside County information and services."]);
+
+ async function validateTaxpayer(){
+   const tin=taxpayerId.trim().toUpperCase();
+   if(!tin){setTaxpayer(null);setTaxpayerStatus("invalid");return}
+   setTaxpayerStatus("loading");setTaxpayer(null);
+   try{
+    const r=await fetch(`/api/business-filings?taxpayerId=${encodeURIComponent(tin)}`,{cache:"no-store"});
+    const p=await r.json().catch(()=>({}));
+    if(!r.ok||!p.valid){setTaxpayerStatus("invalid");return}
+    setTaxpayer(p.taxpayer);setTaxpayerStatus("valid");
+   }catch{setTaxpayerStatus("error")}
+ }
+ function switchTaxpayerMode(mode){
+   setTaxpayerMode(mode);setTaxpayer(null);setTaxpayerStatus("idle");setReceipt(null);
+ }
  async function submitFiling(e){
-   e.preventDefault();const f=new FormData(e.currentTarget);const payload=Object.fromEntries(f.entries());payload.certified=f.get("certified")==="on";
+   e.preventDefault();const f=new FormData(e.currentTarget);const payload=Object.fromEntries(f.entries());
+   payload.certified=f.get("certified")==="on";payload.noTaxpayerId=taxpayerMode==="manual";
+   payload.taxpayerId=taxpayerMode==="tin"?taxpayerId.trim().toUpperCase():"";
+   if(taxpayerMode==="tin"&&taxpayerStatus!=="valid")return alert("Validate the Riverside Taxpayer ID before submitting this filing.");
    const r=await fetch("/api/business-filings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
    const p=await r.json().catch(()=>({}));if(!r.ok)return alert(p.error||"Submission failed");
-   setReceipt(p);e.currentTarget.reset();
+   setReceipt(p);
+   e.currentTarget.reset();
+   setSelectedRuleCode("");setDirection("income");
+   if(taxpayerMode==="manual"){setTaxpayer(null)} // keep validated TIN visible for repeat filings
  }
  function openAgency(a){setSelectedAgency(a)}
  function restartVideo(e){const v=e.currentTarget;try{v.currentTime=2;v.play().catch(()=>{})}catch{}}
 
  return <div className="site">
-  <div className="official-bar">
-    <span className="flag-css" aria-hidden="true"></span>
+  <div className="official-trust-banner">
+    <img className="trust-flag" src="/assets/us-flag.svg" alt="Flag of the United States"/>
     <span>An official website of the Riverside County Government.</span>
-    <button onClick={()=>openHelp("official")}>Here&apos;s how you know</button>
-    <div className="official-right"><button onClick={()=>setHelp(v=>!v)}>{help?"Hide help":"Show help"}</button><span>Public Information</span></div>
+    <button type="button" className="trust-how" onClick={()=>openHelp("official")}>Here’s how you know</button>
   </div>
-  <header className="public-nav"><div className="brand"><img src="/assets/county-government-seal.png" alt="Riverside County seal"/><div><strong>RIVERSIDE COUNTY</strong><span>STATE OF CALIFORNIA</span></div></div><nav>{[["home","Home"],["announcements","Announcements"],["governance","Government"],["agencies","Agencies"],["business","Business Filing"]].map(([k,l])=><button key={k} className={tab===k?"active":""} onClick={()=>setTab(k)}>{l}</button>)}</nav></header>
+
+  <header className="public-nav"><div className="brand"><img src="/assets/county-government-seal.png" alt="Riverside County seal"/><div><strong>RIVERSIDE COUNTY</strong><span>STATE OF CALIFORNIA</span></div></div><nav>{[
+    ["home","Home"],["announcements","Announcements"],["governance","Government"],["agencies","Agencies"],["taxes","Taxes & Filing Guide"],["business","Business Filing"]
+  ].map(([k,l])=><button key={k} className={tab===k?"active":""} onClick={()=>setTab(k)}>{l}</button>)}</nav><button className="nav-help-toggle" onClick={()=>setHelp(v=>!v)}>{help?"Hide help":"Show help"}</button></header>
   {loadNotice&&<div className="county-load-notice">{loadNotice}</div>}
 
-  {tab==="home"&&<main><section className="hero"><video autoPlay muted playsInline loop onLoadedMetadata={e=>{if(e.currentTarget.duration>3)e.currentTarget.currentTime=2}} onTimeUpdate={e=>{const v=e.currentTarget;if(v.duration&&v.currentTime>=v.duration-.2){v.currentTime=Math.min(2,v.duration-.1);v.play().catch(()=>{})}}} onEnded={restartVideo}><source src="/assets/county-home.mp4" type="video/mp4"/></video><div className="shade"></div><div className="hero-content"><img src="/assets/county-government-seal.png" alt=""/><h1>Riverside County Government</h1><p>Public services, county agencies and official information.</p><div className="search"><span>⌕</span><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search county agencies and services"/><Help topic="search" enabled={help} onOpen={openHelp}/></div><div className="hero-links"><button onClick={()=>setTab("agencies")}>Find an agency</button><button onClick={()=>setTab("announcements")}>County announcements</button><button onClick={()=>setTab("business")}>File business transaction</button></div></div></section><section className="home-grid"><article><h2>State & County Announcements <Help topic="announcements" enabled={help} onOpen={openHelp}/></h2>{ann.slice(0,3).map(a=><div className="notice" key={a.id}><small>{a.category}</small><strong>{a.title}</strong><p>{a.summary}</p></div>)}</article><article className="gov-card"><img src="/assets/county-seal.png" alt=""/><h2>County Governance</h2><p>Learn about county leadership, agencies and the administrative structure of Riverside County.</p><button onClick={()=>setTab("governance")}>View County Government →</button></article></section></main>}
+  {tab==="home"&&<main><section className="hero"><video autoPlay muted playsInline loop onLoadedMetadata={e=>{if(e.currentTarget.duration>3)e.currentTarget.currentTime=2}} onTimeUpdate={e=>{const v=e.currentTarget;if(v.duration&&v.currentTime>=v.duration-.2){v.currentTime=Math.min(2,v.duration-.1);v.play().catch(()=>{})}}} onEnded={restartVideo}><source src="/assets/county-home.mp4" type="video/mp4"/></video><div className="shade"></div><div className="hero-content"><img src="/assets/county-government-seal.png" alt=""/><h1>Riverside County Government</h1><p>Public services, county agencies and official information.</p><div className="search"><span>⌕</span><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search county agencies and services"/><Help topic="search" enabled={help} onOpen={openHelp}/></div><div className="hero-links"><button onClick={()=>setTab("agencies")}>Find an agency</button><button onClick={()=>setTab("taxes")}>Tax & filing guidance</button><button onClick={()=>setTab("business")}>File business transaction</button></div></div></section><section className="home-grid"><article><h2>State & County Announcements <Help topic="announcements" enabled={help} onOpen={openHelp}/></h2>{ann.slice(0,3).map(a=><div className="notice" key={a.id}><small>{a.category}</small><strong>{a.title}</strong><p>{a.summary}</p></div>)}</article><article className="gov-card"><img src="/assets/county-seal.png" alt=""/><h2>County Governance</h2><p>Learn about county leadership, agencies and the administrative structure of Riverside County.</p><button onClick={()=>setTab("governance")}>View County Government →</button></article></section></main>}
 
   {tab==="announcements"&&<main className="content"><div className="page-title"><h1>Announcements <Help topic="announcements" enabled={help} onOpen={openHelp}/></h1><p>Official public notices and county information.</p></div><div className="notice-list">{ann.map(a=><article key={a.id}><small>{a.category} · {new Date(a.published_at).toLocaleDateString()}</small><h2>{a.title}</h2><p>{a.summary}</p>{a.body&&<p>{a.body}</p>}</article>)}</div></main>}
 
@@ -85,7 +119,46 @@ export default function Portal(){
 
   {tab==="governance"&&<main className="content"><div className="page-title"><h1>County Government <Help topic="governance" enabled={help} onOpen={openHelp}/></h1><p>Executive leadership and Riverside Senate.</p></div><section className="governor"><img src={gov.government?.governor?.portraitPath||"/assets/governor-seal.png"} onError={e=>e.currentTarget.src="/assets/governor-seal.png"} alt=""/><div><small>GOVERNOR</small><h2>{gov.government?.governor?.name||"William Bracken"}</h2><strong>{gov.government?.governor?.party||"New Founding Fathers of America"}</strong><p>{gov.government?.governor?.biography}</p></div></section><h2>State Cabinet</h2><div className="cabinet-grid">{(gov.government?.cabinet||[]).map((x,i)=><article key={i}><strong>{x.office}</strong><span>{x.name}</span></article>)}</div><h2>Riverside Senate</h2><div className="senate-grid">{(gov.government?.senate||[]).map((x,i)=><article key={i}><strong>{x.name}</strong><span>{x.party}</span><small>{x.district} · {x.committee}</small></article>)}</div></main>}
 
-  {tab==="business"&&<main className="content"><div className="page-title"><h1>Business Transaction Filing <Help topic="business" enabled={help} onOpen={openHelp}/></h1><p>Riverside County Business Activity Return — public filing service.</p></div><form className="tax-form" onSubmit={submitFiling}><div className="form-head"><div className="form-number">RC<br/><b>BT-1040</b></div><div><small>RIVERSIDE COUNTY DEPARTMENT OF FINANCE</small><h2>Business Transaction Activity Return</h2><p>For reportable business income and deductions</p></div><div className="year">{new Date().getFullYear()}</div></div><div className="row three"><label>Business name<input name="businessName" required/></label><label>Reporter / responsible person<input name="reporterName" required/></label><label>Contact reference<input name="contact"/></label></div><div className="row three"><label>Transaction date<input name="occurredAt" type="date" required/></label><label>Activity classification<select name="categoryCode" required defaultValue=""><option value="" disabled>Select category</option>{rules.map(r=><option key={r.code} value={r.code}>{r.name} — {(Number(r.rate_basis_points)/100).toFixed(2)}%</option>)}</select><small className="field-note">{rules.length} active categories loaded</small></label><label>Entry type<select name="direction"><option value="income">Income / taxable receipt (+)</option><option value="expense">Expense / allowable deduction (−)</option></select></label></div><div className="amount-row"><span>Reportable amount</span><span>$</span><input name="amount" type="number" step="0.01" min="0.01" required/></div><label className="description">Description of transaction<textarea name="description" rows="5" placeholder="Describe the transaction, service, sale, contract, expense, or other reportable activity."/></label><div className="cert"><label><input type="checkbox" name="certified" required/> I certify that the information provided in this filing is accurate to the best of my knowledge and is submitted on behalf of the named business.</label></div><button className="submit-return">SUBMIT BUSINESS RETURN</button>{receipt&&<div className="receipt"><strong>Filing received: {receipt.reference}</strong><span>Calculated tax impact: ${Number(receipt.taxImpact).toFixed(2)}</span><span>{receipt.linkedProfile?"Automatically linked to a county financial profile.":"Awaiting RinCEN business-profile association."}</span></div>}</form></main>}
+  {tab==="taxes"&&<main className="content tax-guide"><div className="page-title"><h1>Taxes & Filing Guide <Help topic="taxes" enabled={help} onOpen={openHelp}/></h1><p>Guidance for choosing a Riverside County business activity classification and filing direction.</p></div>
+    <section className="tax-guide-intro">
+      <div><small>RIVERSIDE COUNTY DEPARTMENT OF FINANCE</small><h2>Before you file</h2><p>Business activity returns use your Riverside Taxpayer ID to identify the registered Wirtschaftsprofil. Choose the classification that most closely describes the activity being reported, then identify whether the amount is incoming business activity or a reportable business outflow.</p></div>
+      <button onClick={()=>setTab("business")}>Go to Business Filing →</button>
+    </section>
+    <section className="direction-guide">
+      <article><span className="direction-symbol income">+</span><div><h3>Income / taxable receipt</h3><p>Use this for money or value received through sales, services, rentals, contracts, admissions, or other reportable business receipts. The selected activity classification determines the tax impact calculated on that incoming amount.</p></div></article>
+      <article><span className="direction-symbol expense">−</span><div><h3>Expense / allowable outflow</h3><p>Use this only for a business outflow that is reportable or deductible under the applicable county schedule. An expense is recorded as negative activity; it is not the same thing as paying an assessed county tax bill.</p></div></article>
+    </section>
+    <div className="tax-classification-grid">{rules.map(rule=><article key={rule.code}><header><span>{rule.code.replaceAll("_"," ")}</span><strong>{rateLabel(rule)}</strong></header><h3>{rule.name}</h3><p>{rule.description||"County business activity classification."}</p><div className="tax-classification-example"><b>Choose this when:</b> {rule.code==="RETAIL_SALES"?"The transaction is a sale of goods to a customer.":rule.code==="PROFESSIONAL_SERVICES"?"The business is being paid for advisory, professional, technical, or specialist work.":rule.code==="CONTRACTING"?"The reported activity comes from construction, repair, installation, or contractor work.":rule.code==="HOSPITALITY"?"The activity concerns lodging, accommodation, or hospitality services.":rule.code==="FOOD_BEVERAGE"?"The amount comes from prepared food, restaurant, catering, or beverage activity.":rule.code==="ENTERTAINMENT"?"The activity involves events, admission, recreation, or entertainment.":rule.code==="VEHICLE_RENTAL"?"The business receives or reports value from renting vehicles or equipment.":rule.code==="PROPERTY_TRANSFER"?"The filing concerns a qualifying transfer of property or a property interest.":rule.code==="UTILITIES"?"The activity relates to utility or infrastructure services.":rule.code==="DIGITAL_COMMERCE"?"The transaction occurred through online commerce, digital products, a platform, or electronic service.":rule.code==="LUXURY_GOODS"?"The activity involves designated luxury or high-value goods.":rule.code==="LICENSED_ACTIVITY"?"The transaction arises from an activity conducted under a county permit or license.":"No more specific classification accurately describes the ordinary business receipt."}</div></article>)}</div>
+    <section className="tax-guide-note"><strong>Important:</strong><p>The activity rate shown here is the rate currently configured in the Riverside County financial system for this filing classification. This guide helps select a portal category; it does not replace a formal notice, assessment, exemption decision, or specific instruction issued by the Department of Finance.</p></section>
+  </main>}
+
+  {tab==="business"&&<main className="content"><div className="page-title"><h1>Business Transaction Filing <Help topic="business" enabled={help} onOpen={openHelp}/></h1><p>Riverside County Business Activity Return — taxpayer-identified public filing service.</p></div>
+    <form className="tax-form" onSubmit={submitFiling}>
+      <div className="form-head"><div className="form-number">RC<br/><b>BT-1040</b></div><div><small>RIVERSIDE COUNTY DEPARTMENT OF FINANCE</small><h2>Business Transaction Activity Return</h2><p>For reportable business income and deductions</p></div><div className="year">{new Date().getFullYear()}</div></div>
+
+      <section className="taxpayer-identification">
+        <div className="taxpayer-identification-head"><div><small>SECTION A</small><h3>Taxpayer Identification</h3><p>Use the Riverside Taxpayer ID issued to the Wirtschaftsprofil whenever one is available.</p></div><div className="taxpayer-mode-switch"><button type="button" className={taxpayerMode==="tin"?"active":""} onClick={()=>switchTaxpayerMode("tin")}>I have a Taxpayer ID</button><button type="button" className={taxpayerMode==="manual"?"active":""} onClick={()=>switchTaxpayerMode("manual")}>No Taxpayer ID issued</button></div></div>
+
+        {taxpayerMode==="tin"?<div className="taxpayer-lookup">
+          <label>Riverside Taxpayer ID<div className="taxpayer-input-row"><input value={taxpayerId} onChange={e=>{setTaxpayerId(e.target.value.toUpperCase());setTaxpayer(null);setTaxpayerStatus("idle")}} placeholder="RC-TIN-2026-000001" pattern="RC-TIN-[0-9]{4}-[0-9]{6}" required/><button type="button" onClick={validateTaxpayer} disabled={taxpayerStatus==="loading"}>{taxpayerStatus==="loading"?"Checking…":"Validate"}</button></div></label>
+          {taxpayerStatus==="valid"&&taxpayer&&<div className="taxpayer-result valid"><span>✓ REGISTERED TAXPAYER FOUND</span><strong>{taxpayer.legalName}</strong><dl><dt>Taxpayer ID</dt><dd>{taxpayer.taxpayerId}</dd><dt>Wirtschaftsprofil</dt><dd>{taxpayer.economicProfileId}</dd><dt>Classification</dt><dd>{taxpayer.classification||"—"}</dd><dt>Profile status</dt><dd>{taxpayer.status||"—"}</dd></dl><p>The legal name above is supplied by RinCEN and will be used for this filing. It cannot be replaced with a different free-typed business name.</p></div>}
+          {taxpayerStatus==="invalid"&&<div className="taxpayer-result invalid"><strong>Taxpayer ID not found.</strong><p>Check the number and try again. If no Riverside Taxpayer ID has been issued, use the unregistered taxpayer option instead.</p></div>}
+          {taxpayerStatus==="error"&&<div className="taxpayer-result invalid"><strong>Taxpayer verification unavailable.</strong><p>The County could not reach the financial profile service. Try again before filing.</p></div>}
+        </div>:<div className="manual-taxpayer-path"><div className="manual-warning"><strong>UNREGISTERED / LEGACY FILING PATH</strong><p>Use this only when the business or taxpayer has not been issued a Riverside Taxpayer ID. The filing will enter Government Transactions without an automatic Wirtschaftsprofil link and may require manual review by the Department of Finance.</p></div><label>Legal business / taxpayer name<input name="businessName" required placeholder="Enter the legal name used for this filing"/></label></div>}
+      </section>
+
+      <div className="row two"><label>Reporter / responsible person<input name="reporterName" required/></label><label>Contact reference<input name="contact"/></label></div>
+      <div className="row three"><label>Transaction date<input name="occurredAt" type="date" required/></label><label>Activity classification<select name="categoryCode" required value={selectedRuleCode} onChange={e=>setSelectedRuleCode(e.target.value)}><option value="" disabled>Select category</option>{rules.map(r=><option key={r.code} value={r.code}>{r.name} — {rateLabel(r)}</option>)}</select><small className="field-note">{rules.length} active categories loaded · <button type="button" className="inline-guide-link" onClick={()=>setTab("taxes")}>Need help choosing?</button></small></label><label>Entry type<select name="direction" value={direction} onChange={e=>setDirection(e.target.value)}><option value="income">Income / taxable receipt (+)</option><option value="expense">Expense / allowable outflow (−)</option></select></label></div>
+
+      {(selectedRule||direction)&&<section className="filing-guidance-box"><div><small>FILING GUIDANCE</small><strong>{selectedRule?`${selectedRule.name} · ${rateLabel(selectedRule)}`:"Choose an activity classification"}</strong><p>{selectedRule?.description||"Select the business activity that most closely describes the transaction."}</p></div><div><small>ENTRY TYPE</small><strong>{direction==="expense"?"Expense / allowable outflow":"Income / taxable receipt"}</strong><p>{directionHelp(direction)}</p></div></section>}
+
+      <div className="amount-row"><span>Reportable amount</span><span>$</span><input name="amount" type="number" step="0.01" min="0.01" required/></div>
+      <label className="description">Description of transaction<textarea name="description" rows="5" placeholder="Describe the transaction, service, sale, contract, expense, or other reportable activity."/></label>
+      <div className="cert"><label><input type="checkbox" name="certified" required/> I certify that the information provided in this filing is accurate to the best of my knowledge and is submitted on behalf of the identified taxpayer or named unregistered business.</label></div>
+      <button className="submit-return">SUBMIT BUSINESS RETURN</button>
+      {receipt&&<div className="receipt"><strong>Filing received: {receipt.reference}</strong><span>Registered taxpayer: {receipt.taxpayerId||"Not provided"}</span><span>Recorded taxpayer name: {receipt.businessName}</span><span>Calculated tax impact: ${Number(receipt.taxImpact).toFixed(2)}</span><span>{receipt.linkedProfile?`Automatically linked to Wirtschaftsprofil ${receipt.linkedProfile}.`:"Unregistered filing — awaiting any necessary manual RinCEN review."}</span></div>}
+    </form>
+  </main>}
 
   <footer><img src="/assets/county-seal.png" alt=""/><div><strong>Riverside County Government</strong><span>State of California · Public Information Portal</span></div><span>Official county network</span></footer>
 
