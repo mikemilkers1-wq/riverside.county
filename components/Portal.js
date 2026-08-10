@@ -24,10 +24,23 @@ const helpData={
  business:["Business Transaction Filing","Report county business activity using a validated Riverside Taxpayer ID whenever one has been issued. The legal taxpayer name is resolved from RinCEN rather than freely entered, reducing duplicate and mismatched financial records."],
  taxes:["Taxes & Filing Guide","This page explains the county business activity classifications currently configured for public filings. It helps filers choose the closest activity type and understand the difference between reporting income and reporting an allowable business outflow."],
  search:["County Search","Filter the public agency and government information currently loaded on this website. This is not a full records request or court-record search."],
- official:["Official Riverside County Website","This banner identifies the page as part of the Riverside County Government web network. Official county pages use shared government data services where indicated, but each department remains responsible for its own records and authority."]
+ official:["Official Riverside County Website","This banner identifies the page as part of the Riverside County Government web network. Official county pages use shared government data services where indicated, but each department remains responsible for its own records and authority."],
+ filingTin:["Riverside Taxpayer ID","Enter the Taxpayer ID printed on or otherwise issued with the Riverside Wirtschaftsprofil, for example RC-TIN-2026-000009. A Taxpayer ID identifies the taxpayer but does not by itself authorize filing; if no TIN has been issued, choose the unregistered taxpayer path instead of borrowing or guessing another taxpayer's number."],
+ filingAccess:["Filing Access Code","Enter the confidential Filing Access Code issued for this Wirtschaftsprofil by the Department of Finance. It is separate from the Taxpayer ID and is used to prove that you are authorized to submit an online return for this taxpayer; if it is lost, contact the Department of Finance rather than creating a replacement or using somebody else's code."],
+ filingManualName:["Legal business / taxpayer name","Use the exact legal or officially recognized name of the unregistered taxpayer. If you are unsure of the correct name, do not guess; contact the Department of Finance before filing because this legacy path is reviewed manually and is not automatically linked to an existing Wirtschaftsprofil."],
+ filingReporter:["Reporter / responsible person","Enter the name or handle of the person who is actually preparing and submitting this return. This is an audit/contact field, not the taxpayer name; if another person prepared the figures, enter the person responsible for the submission here."],
+ filingContact:["Contact reference","Provide a practical way for Riverside County staff to identify or contact the filer if clarification is required, such as an approved account name, Discord username, reference number, or other channel used in your community. If no separate contact reference exists, this field may be left blank."],
+ filingDate:["Transaction date","Enter the actual date on which this business activity occurred, not simply today's filing date. If different transactions occurred on different dates, add separate activity lines instead of forcing several dates into one line."],
+ filingClass:["Activity classification","Choose the category that most closely describes this specific activity. If none is obvious, open the Taxes & Filing Guide rather than guessing; different kinds of activity should be entered as separate lines when appropriate."],
+ filingDirection:["Entry type","Choose Income / taxable receipt when the line represents incoming business activity, and Expense / potentially allowable deduction when it represents an eligible business outflow. An expense is not a tax payment and cannot create a negative tax balance."],
+ filingAmount:["Amount","Enter the positive dollar amount for this particular activity line. Do not type a minus sign for an expense; select Expense as the entry type and enter the absolute amount here."],
+ filingDescription:["Description","Briefly explain what the line represents so Finance can understand the activity later, such as the sale, service, rental, contract, or business expense involved. Do not enter passwords, Filing Access Codes, or unrelated sensitive information in this description."],
+ filingAddLine:["Add activity line","Add another line when a return contains another transaction date, classification, direction, amount, or materially different activity. Multiple lines remain part of the same filing and receive one common filing reference."],
+ filingCertification:["Certification","Check this only after reviewing the entire return and confirming that you are authorized to submit it. If any taxpayer ID, code, amount, date, classification, or description is uncertain, correct it or seek Finance assistance before certifying."],
+ filingSubmit:["Submit business return","Submission sends the completed return to the Riverside County financial ledger and generates a filing reference. Once submitted, corrections should be handled through the Department of Finance rather than by filing intentionally conflicting duplicate returns."]
 };
 
-function Help({topic,enabled,onOpen}){if(!enabled)return null;return <button className="info-dot" title="Information" onClick={()=>onOpen(topic)}>i</button>}
+function Help({topic,enabled,onOpen}){if(!enabled)return null;return <button type="button" className="info-dot field-info-dot" title="Information" aria-label="Information" onClick={e=>{e.preventDefault();e.stopPropagation();onOpen(topic)}}>i</button>}
 function agencyLogo(a){
  if(a?.logoPath)return a.logoPath;
  const known={rdof:"/county-governance/rdof-logo.png"};
@@ -45,7 +58,7 @@ export default function Portal(){
  [rules,setRules]=useState(FALLBACK_RULES),[help,setHelp]=useState(false),[drawer,setDrawer]=useState(null),
  [q,setQ]=useState(""),[receipt,setReceipt]=useState(null),[selectedAgency,setSelectedAgency]=useState(null),
  [loadNotice,setLoadNotice]=useState(""),[taxpayerMode,setTaxpayerMode]=useState("tin"),
- [taxpayerId,setTaxpayerId]=useState(""),[taxpayer,setTaxpayer]=useState(null),[taxpayerStatus,setTaxpayerStatus]=useState("idle"),
+ [taxpayerId,setTaxpayerId]=useState(""),[filingAccessCode,setFilingAccessCode]=useState(""),[taxpayer,setTaxpayer]=useState(null),[taxpayerStatus,setTaxpayerStatus]=useState("idle"),
  [filingLines,setFilingLines]=useState([{id:1,occurredAt:"",categoryCode:"",direction:"income",amount:"",description:""}]);
 
  useEffect(()=>{
@@ -75,23 +88,24 @@ export default function Portal(){
  const openHelp=k=>setDrawer(helpData[k]||["Information","This area provides public Riverside County information and services."]);
 
  async function validateTaxpayer(){
-   const tin=taxpayerId.trim().toUpperCase();
-   if(!tin){setTaxpayer(null);setTaxpayerStatus("invalid");return}
+   const tin=taxpayerId.trim().toUpperCase(),access=filingAccessCode.trim().toUpperCase();
+   if(!tin||!access){setTaxpayer(null);setTaxpayerStatus("invalid");return}
    setTaxpayerStatus("loading");setTaxpayer(null);
    try{
-    const r=await fetch(`/api/business-filings?taxpayerId=${encodeURIComponent(tin)}`,{cache:"no-store"});
+    const r=await fetch("/api/business-filings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"verify",taxpayerId:tin,filingCode:access})});
     const p=await r.json().catch(()=>({}));
     if(!r.ok||!p.valid){setTaxpayerStatus("invalid");return}
     setTaxpayer(p.taxpayer);setTaxpayerStatus("valid");
    }catch{setTaxpayerStatus("error")}
  }
  function switchTaxpayerMode(mode){
-   setTaxpayerMode(mode);setTaxpayer(null);setTaxpayerStatus("idle");setReceipt(null);
+   setTaxpayerMode(mode);setTaxpayer(null);setTaxpayerStatus("idle");setFilingAccessCode("");setReceipt(null);
  }
  async function submitFiling(e){
    e.preventDefault();const f=new FormData(e.currentTarget);const payload=Object.fromEntries(f.entries());
    payload.certified=f.get("certified")==="on";payload.noTaxpayerId=taxpayerMode==="manual";
    payload.taxpayerId=taxpayerMode==="tin"?taxpayerId.trim().toUpperCase():"";
+   payload.filingCode=taxpayerMode==="tin"?filingAccessCode.trim().toUpperCase():"";
    payload.lines=filingLines.map(({occurredAt,categoryCode,direction,amount,description})=>({occurredAt,categoryCode,direction,amount:Number(amount),description}));
    if(taxpayerMode==="tin"&&taxpayerStatus!=="valid")return alert("Validate the Riverside Taxpayer ID before submitting this filing.");
    if(payload.lines.some(line=>!line.occurredAt||!line.categoryCode||!Number.isFinite(line.amount)||line.amount<=0))return alert("Complete the date, classification and positive amount for every activity line.");
@@ -146,25 +160,29 @@ export default function Portal(){
         <div className="taxpayer-identification-head"><div><small>SECTION A</small><h3>Taxpayer Identification</h3><p>Use the Riverside Taxpayer ID issued to the Wirtschaftsprofil whenever one is available.</p></div><div className="taxpayer-mode-switch"><button type="button" className={taxpayerMode==="tin"?"active":""} onClick={()=>switchTaxpayerMode("tin")}>I have a Taxpayer ID</button><button type="button" className={taxpayerMode==="manual"?"active":""} onClick={()=>switchTaxpayerMode("manual")}>No Taxpayer ID issued</button></div></div>
 
         {taxpayerMode==="tin"?<div className="taxpayer-lookup">
-          <label>Riverside Taxpayer ID<div className="taxpayer-input-row"><input value={taxpayerId} onChange={e=>{setTaxpayerId(e.target.value.toUpperCase());setTaxpayer(null);setTaxpayerStatus("idle")}} placeholder="RC-TIN-2026-000001" pattern="RC-TIN-[0-9]{4}-[0-9]{6}" required/><button type="button" onClick={validateTaxpayer} disabled={taxpayerStatus==="loading"}>{taxpayerStatus==="loading"?"Checking…":"Validate"}</button></div></label>
-          {taxpayerStatus==="valid"&&taxpayer&&<div className="taxpayer-result valid"><span>✓ REGISTERED TAXPAYER FOUND</span><strong>{taxpayer.legalName}</strong><dl><dt>Taxpayer ID</dt><dd>{taxpayer.taxpayerId}</dd><dt>Wirtschaftsprofil</dt><dd>{taxpayer.economicProfileId}</dd><dt>Classification</dt><dd>{taxpayer.classification||"—"}</dd><dt>Profile status</dt><dd>{taxpayer.status||"—"}</dd></dl><p>The legal name above is supplied by RinCEN and will be used for this filing. It cannot be replaced with a different free-typed business name.</p></div>}
-          {taxpayerStatus==="invalid"&&<div className="taxpayer-result invalid"><strong>Taxpayer ID not found.</strong><p>Check the number and try again. If no Riverside Taxpayer ID has been issued, use the unregistered taxpayer option instead.</p></div>}
+          <div className="registered-auth-grid">
+            <label><span className="field-label-title">Riverside Taxpayer ID <Help topic="filingTin" enabled={help} onOpen={openHelp}/></span><input value={taxpayerId} onChange={e=>{setTaxpayerId(e.target.value.toUpperCase());setTaxpayer(null);setTaxpayerStatus("idle")}} placeholder="RC-TIN-2026-000001" pattern="RC-TIN-[0-9]{4}-[0-9]{6}" required/></label>
+            <label><span className="field-label-title">Filing Access Code <Help topic="filingAccess" enabled={help} onOpen={openHelp}/></span><input type="password" autoComplete="off" value={filingAccessCode} onChange={e=>{setFilingAccessCode(e.target.value.toUpperCase());setTaxpayer(null);setTaxpayerStatus("idle")}} placeholder="RC-FAC-XXXX-XXXX-XXXX" required/></label>
+          </div>
+          <div className="taxpayer-verify-row"><span>Both credentials must match the same Wirtschaftsprofil.</span><button type="button" onClick={validateTaxpayer} disabled={taxpayerStatus==="loading"}>{taxpayerStatus==="loading"?"Checking…":"Verify taxpayer & authority"}</button></div>
+          {taxpayerStatus==="valid"&&taxpayer&&<div className="taxpayer-result valid"><span>✓ TAXPAYER & FILING AUTHORITY VERIFIED</span><strong>{taxpayer.legalName}</strong><dl><dt>Taxpayer ID</dt><dd>{taxpayer.taxpayerId}</dd><dt>Wirtschaftsprofil</dt><dd>{taxpayer.economicProfileId}</dd><dt>Classification</dt><dd>{taxpayer.classification||"—"}</dd><dt>Profile status</dt><dd>{taxpayer.status||"—"}</dd></dl><p>The legal name above is supplied by RinCEN. The Filing Access Code is not stored in the filing ledger and should not be copied into descriptions or shared with unrelated persons.</p></div>}
+          {taxpayerStatus==="invalid"&&<div className="taxpayer-result invalid"><strong>Taxpayer authorization could not be verified.</strong><p>Check both the Taxpayer ID and Filing Access Code. For security, the portal does not disclose which of the two values was incorrect; if no Taxpayer ID exists, use the unregistered taxpayer path instead.</p></div>}
           {taxpayerStatus==="error"&&<div className="taxpayer-result invalid"><strong>Taxpayer verification unavailable.</strong><p>The County could not reach the financial profile service. Try again before filing.</p></div>}
-        </div>:<div className="manual-taxpayer-path"><div className="manual-warning"><strong>UNREGISTERED / LEGACY FILING PATH</strong><p>Use this only when the business or taxpayer has not been issued a Riverside Taxpayer ID. The filing will enter Government Transactions without an automatic Wirtschaftsprofil link and may require manual review by the Department of Finance.</p></div><label>Legal business / taxpayer name<input name="businessName" required placeholder="Enter the legal name used for this filing"/></label></div>}
+        </div>:<div className="manual-taxpayer-path"><div className="manual-warning"><strong>UNREGISTERED / LEGACY FILING PATH</strong><p>Use this only when the business or taxpayer has not been issued a Riverside Taxpayer ID. This path never attaches activity directly to somebody else's registered Wirtschaftsprofil and may require manual review by the Department of Finance.</p></div><label><span className="field-label-title">Legal business / taxpayer name <Help topic="filingManualName" enabled={help} onOpen={openHelp}/></span><input name="businessName" required placeholder="Enter the legal name used for this filing"/></label></div>}
       </section>
 
-      <div className="row two"><label>Reporter / responsible person<input name="reporterName" required/></label><label>Contact reference<input name="contact"/></label></div>
+      <div className="row two"><label><span className="field-label-title">Reporter / responsible person <Help topic="filingReporter" enabled={help} onOpen={openHelp}/></span><input name="reporterName" required/></label><label><span className="field-label-title">Contact reference <Help topic="filingContact" enabled={help} onOpen={openHelp}/></span><input name="contact"/></label></div>
       <section className="filing-lines-section">
-        <header><div><small>SECTION B</small><h3>Business Activity Lines</h3><p>A single return may contain multiple activities or tax classifications. Add a separate line whenever the date, classification, direction, amount, or description differs.</p></div><button type="button" onClick={addLine}>＋ Add activity line</button></header>
+        <header><div><small>SECTION B</small><h3>Business Activity Lines</h3><p>A single return may contain multiple activities or tax classifications. Add a separate line whenever the date, classification, direction, amount, or description differs.</p></div><div className="header-action-with-help"><button type="button" onClick={addLine}>＋ Add activity line</button><Help topic="filingAddLine" enabled={help} onOpen={openHelp}/></div></header>
         <div className="filing-lines">
           {filingLines.map((line,index)=>{const rule=lineRule(line);const amount=Number(line.amount||0);const estimated=rule?amount*(Number(rule.rate_basis_points||0)/10000):0;return <article className="filing-line" key={line.id}>
             <div className="filing-line-number">LINE {index+1}</div>
             <div className="filing-line-grid">
-              <label>Transaction date<input type="date" value={line.occurredAt} min="1900-01-01" max={today} onChange={e=>updateLine(line.id,"occurredAt",e.target.value)} required/></label>
-              <label>Activity classification<select value={line.categoryCode} onChange={e=>updateLine(line.id,"categoryCode",e.target.value)} required><option value="" disabled>Select category</option>{rules.map(r=><option key={r.code} value={r.code}>{r.name} — {rateLabel(r)}</option>)}</select><small className="field-note"><button type="button" className="inline-guide-link" onClick={()=>setTab("taxes")}>Need help choosing?</button></small></label>
-              <label>Entry type<select value={line.direction} onChange={e=>updateLine(line.id,"direction",e.target.value)}><option value="income">Income / taxable receipt (+)</option><option value="expense">Expense / potentially allowable deduction</option></select></label>
-              <label>Amount ($)<input type="number" step="0.01" min="0.01" value={line.amount} onChange={e=>updateLine(line.id,"amount",e.target.value)} required/></label>
-              <label className="wide">Description<input value={line.description} onChange={e=>updateLine(line.id,"description",e.target.value)} placeholder="Describe the sale, service, contract, expense, or other business activity."/></label>
+              <label><span className="field-label-title">Transaction date <Help topic="filingDate" enabled={help} onOpen={openHelp}/></span><input type="date" value={line.occurredAt} min="1900-01-01" max={today} onChange={e=>updateLine(line.id,"occurredAt",e.target.value)} required/></label>
+              <label><span className="field-label-title">Activity classification <Help topic="filingClass" enabled={help} onOpen={openHelp}/></span><select value={line.categoryCode} onChange={e=>updateLine(line.id,"categoryCode",e.target.value)} required><option value="" disabled>Select category</option>{rules.map(r=><option key={r.code} value={r.code}>{r.name} — {rateLabel(r)}</option>)}</select><small className="field-note"><button type="button" className="inline-guide-link" onClick={()=>setTab("taxes")}>Need help choosing?</button></small></label>
+              <label><span className="field-label-title">Entry type <Help topic="filingDirection" enabled={help} onOpen={openHelp}/></span><select value={line.direction} onChange={e=>updateLine(line.id,"direction",e.target.value)}><option value="income">Income / taxable receipt (+)</option><option value="expense">Expense / potentially allowable deduction</option></select></label>
+              <label><span className="field-label-title">Amount ($) <Help topic="filingAmount" enabled={help} onOpen={openHelp}/></span><input type="number" step="0.01" min="0.01" value={line.amount} onChange={e=>updateLine(line.id,"amount",e.target.value)} required/></label>
+              <label className="wide"><span className="field-label-title">Description <Help topic="filingDescription" enabled={help} onOpen={openHelp}/></span><input value={line.description} onChange={e=>updateLine(line.id,"description",e.target.value)} placeholder="Describe the sale, service, contract, expense, or other business activity."/></label>
             </div>
             <div className="filing-line-guidance">
               <div><strong>{rule?rule.name:"Choose a classification"}</strong><span>{rule?.description||"The selected classification determines how this line is treated."}</span></div>
@@ -175,8 +193,8 @@ export default function Portal(){
         </div>
       </section>
       <div className="filing-accuracy-warning"><strong>DOUBLE-CHECK YOUR FILING BEFORE SUBMISSION</strong><p>Please review every Taxpayer ID, legal name, transaction date, amount, classification, direction and description at least twice — and preferably a third time for important filings. Misspelled names, transposed digits, an incorrect year, or the wrong activity classification can cause the transaction to be associated with the wrong record or require a later correction by the Department of Finance.</p></div>
-      <div className="cert"><label><input type="checkbox" name="certified" required/> I certify that I reviewed the information above and that it is accurate to the best of my knowledge and submitted on behalf of the identified taxpayer or named unregistered business.</label></div>
-      <button className="submit-return">SUBMIT BUSINESS RETURN</button>
+      <div className="cert"><label><input type="checkbox" name="certified" required/> <span>I certify that I reviewed the information above and that it is accurate to the best of my knowledge and submitted on behalf of the identified taxpayer or named unregistered business. <Help topic="filingCertification" enabled={help} onOpen={openHelp}/></span></label></div>
+      <div className="submit-with-help"><button className="submit-return">SUBMIT BUSINESS RETURN</button><Help topic="filingSubmit" enabled={help} onOpen={openHelp}/></div>
       {receipt&&<div className="receipt"><strong>Filing received: {receipt.reference}</strong><span>Registered taxpayer: {receipt.taxpayerId||"Not provided"}</span><span>Recorded taxpayer name: {receipt.businessName}</span><span>Gross estimated assessment: ${Number(receipt.grossAssessment||0).toFixed(2)}</span><span>Estimated deduction effect: −${Number(receipt.deductionEffect||0).toFixed(2)}</span><span>Net estimated assessment: ${Number(receipt.netAssessment||0).toFixed(2)}</span><span>Activity lines filed: {receipt.lineCount||1}</span><span>{receipt.linkedProfile?`Automatically linked to Wirtschaftsprofil ${receipt.linkedProfile}.`:"Unregistered filing — awaiting any necessary manual RinCEN review."}</span></div>}
     </form>
   </main>}

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import {NextResponse} from "next/server";
 import {db} from "@/lib/db";
 import {ensureDatabase} from "@/lib/setup";
@@ -24,15 +25,39 @@ async function findTaxpayer(sql,taxpayerId){
   LIMIT 1`;
  return rows[0]?.account||null;
 }
+function normalizeFilingCode(v=""){return String(v).trim().toUpperCase()}
+function secureEqual(a,b){
+ const aa=Buffer.from(String(a||"")),bb=Buffer.from(String(b||""));
+ return aa.length===bb.length && crypto.timingSafeEqual(aa,bb);
+}
+function requestIpHash(req){
+ const raw=String(req.headers.get("x-forwarded-for")||req.headers.get("x-real-ip")||"unknown").split(",")[0].trim();
+ return crypto.createHash("sha256").update(raw).digest("hex");
+}
+async function tooManyFailures(sql,tin,ipHash){
+ const rows=await sql`SELECT COUNT(*)::int AS count FROM county_public_filing_attempts
+   WHERE success=FALSE AND attempted_at>NOW()-INTERVAL '15 minutes'
+   AND (taxpayer_id=${tin} OR ip_hash=${ipHash})`;
+ return Number(rows[0]?.count||0)>=8;
+}
+async function recordAttempt(sql,tin,ipHash,success){
+ await sql`INSERT INTO county_public_filing_attempts(taxpayer_id,ip_hash,success)
+   VALUES(${tin||null},${ipHash},${Boolean(success)})`;
+}
+async function authorizeRegisteredFiling(sql,req,taxpayerId,filingCode){
+ const tin=normalizeTin(taxpayerId),code=normalizeFilingCode(filingCode),ipHash=requestIpHash(req);
+ if(await tooManyFailures(sql,tin,ipHash))return {ok:false,status:429,error:"Too many failed verification attempts. Try again later."};
+ const account=await findTaxpayer(sql,tin);
+ const stored=String(account?.filingAccessCode||"").trim().toUpperCase();
+ const ok=Boolean(account&&stored&&code&&secureEqual(stored,code));
+ await recordAttempt(sql,tin,ipHash,ok);
+ if(!ok)return {ok:false,status:404,error:"Taxpayer authorization could not be verified."};
+ return {ok:true,account};
+}
 
-export async function GET(req){
+export async function GET(){
  try{
-  await ensureDatabase();const sql=db(),{searchParams}=new URL(req.url),taxpayerId=searchParams.get("taxpayerId");
-  if(taxpayerId){
-    const account=await findTaxpayer(sql,taxpayerId);
-    if(!account)return NextResponse.json({valid:false,error:"Taxpayer ID not found."},{status:404});
-    return NextResponse.json({valid:true,taxpayer:{taxpayerId:account.taxpayerId,economicProfileId:account.id,legalName:account.holder,classification:account.classification||null,status:account.status||null}});
-  }
+  await ensureDatabase();const sql=db();
   const rows=await sql`SELECT code,name,rate_basis_points,description FROM county_tax_rules WHERE active=TRUE ORDER BY sort_order,name`;
   return NextResponse.json({rules:rows});
  }catch(e){console.error("GET /api/business-filings",e);return NextResponse.json({error:"Tax filing service unavailable."},{status:500})}
@@ -41,15 +66,23 @@ export async function GET(req){
 export async function POST(req){
  try{
   await ensureDatabase();const b=await req.json(),sql=db();
-  const reporter=String(b.reporterName||"").trim(),noTaxpayerId=Boolean(b.noTaxpayerId),requestedTin=normalizeTin(b.taxpayerId);
+  const requestedTin=normalizeTin(b.taxpayerId),filingCode=normalizeFilingCode(b.filingCode);
+  if(b.action==="verify"){
+    const auth=await authorizeRegisteredFiling(sql,req,requestedTin,filingCode);
+    if(!auth.ok)return NextResponse.json({valid:false,error:auth.error},{status:auth.status});
+    const account=auth.account;
+    return NextResponse.json({valid:true,taxpayer:{taxpayerId:account.taxpayerId,economicProfileId:account.id,legalName:account.holder,classification:account.classification||null,status:account.status||null}});
+  }
+  const reporter=String(b.reporterName||"").trim(),noTaxpayerId=Boolean(b.noTaxpayerId);
   if(!reporter)return NextResponse.json({error:"Reporter / responsible person is required."},{status:400});
   if(!b.certified)return NextResponse.json({error:"Certification is required before filing."},{status:400});
 
   let businessName="",economicProfileId=null,taxpayerId=null,unregistered=false;
   if(!noTaxpayerId){
     if(!requestedTin)return NextResponse.json({error:"A Riverside Taxpayer ID is required or the unregistered filing path must be selected."},{status:400});
-    const account=await findTaxpayer(sql,requestedTin);
-    if(!account)return NextResponse.json({error:"The Riverside Taxpayer ID could not be validated."},{status:400});
+    const auth=await authorizeRegisteredFiling(sql,req,requestedTin,filingCode);
+    if(!auth.ok)return NextResponse.json({error:auth.error},{status:auth.status});
+    const account=auth.account;
     businessName=String(account.holder||"").trim();economicProfileId=String(account.id||"").trim()||null;taxpayerId=String(account.taxpayerId||requestedTin).trim().toUpperCase();
     if(!businessName||!economicProfileId)return NextResponse.json({error:"The taxpayer profile is incomplete and cannot be used for public filing."},{status:409});
   }else{
@@ -93,7 +126,7 @@ export async function POST(req){
         ('county_public_filing','activity',${businessName},${normalized},${reporter},${reporter},
          ${line.categoryCode},${line.direction},${line.grossAmount},${line.rate},${line.taxAmount},${line.deductionAmount},0,
          ${line.occurredAt},${line.description},${economicProfileId},${taxpayerId},${filingReference},
-         ${JSON.stringify({certified:true,contact:b.contact||"",ruleName:line.rule.name,lineNumber:line.lineNumber,taxpayerResolution:unregistered?"unregistered_manual":"validated_taxpayer_id",unregisteredTaxpayer:unregistered})}::jsonb)
+         ${JSON.stringify({certified:true,contact:b.contact||"",ruleName:line.rule.name,lineNumber:line.lineNumber,taxpayerResolution:unregistered?"unregistered_manual":"validated_taxpayer_id_and_filing_code",unregisteredTaxpayer:unregistered})}::jsonb)
       RETURNING public_id`;
     ids.push(rows[0].public_id);
   }

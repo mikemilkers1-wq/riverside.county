@@ -72,3 +72,24 @@
 .filing-accuracy-warning{margin:17px 0;padding:13px 15px;border:2px solid #c19b37;background:#fff8dd;color:#594700}.filing-accuracy-warning strong{font-size:11px;letter-spacing:.08em}.filing-accuracy-warning p{margin:6px 0 0;font-size:11px;line-height:1.55}
 @media(max-width:1000px){.filing-line-grid{grid-template-columns:1fr 1fr}.filing-line-guidance{grid-template-columns:1fr 1fr}.filing-line-guidance .remove-line{grid-column:1/-1;justify-self:end}}
 @media(max-width:650px){.filing-lines-section>header{align-items:stretch;flex-direction:column}.filing-line-grid,.filing-line-guidance{grid-template-columns:1fr}.filing-line-grid .wide,.filing-line-guidance .remove-line{grid-column:1}}
+
+
+/* County Government v1.0.4 — filing authorization + field-level assistance */
+.registered-auth-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.registered-auth-grid label,.manual-taxpayer-path label{display:grid;gap:5px;font-size:10px;font-weight:700}
+.registered-auth-grid input,.manual-taxpayer-path input{width:100%;padding:9px;border:1px solid #8fa0ab;background:#fff;color:#1b3347}
+.taxpayer-verify-row{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-top:10px;padding-top:10px;border-top:1px solid #d0d9df}
+.taxpayer-verify-row span{font-size:10px;color:#60727f}
+.taxpayer-verify-row button{padding:8px 12px;border:1px solid #315f81;background:#173958;color:#fff;font-weight:700}
+.field-label-title{display:flex;align-items:center;gap:5px;min-height:18px}
+.field-info-dot{flex:0 0 16px;width:16px;height:16px;padding:0;line-height:14px;font-size:9px;background:#fff;color:#005ea2;border-color:#6e91aa}
+.field-info-dot:hover{background:#e7f2f8;color:#003f6b}
+.header-action-with-help,.submit-with-help{display:flex;align-items:center;gap:7px}
+.submit-with-help{width:max-content;margin:14px}
+.submit-with-help .submit-return{margin:0}
+.cert .field-info-dot{display:inline-grid;place-items:center;margin-left:4px}
+.filing-lines-section label .field-info-dot{align-self:center}
+@media(max-width:760px){
+ .registered-auth-grid{grid-template-columns:1fr}
+ .taxpayer-verify-row{align-items:stretch;flex-direction:column}
+}
