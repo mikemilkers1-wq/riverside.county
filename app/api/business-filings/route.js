@@ -46,12 +46,12 @@ async function recordAttempt(sql,tin,ipHash,success){
 }
 async function authorizeRegisteredFiling(sql,req,taxpayerId,filingCode){
  const tin=normalizeTin(taxpayerId),code=normalizeFilingCode(filingCode),ipHash=requestIpHash(req);
- if(await tooManyFailures(sql,tin,ipHash))return {ok:false,status:429,error:"Too many failed verification attempts. Try again later."};
+ if(await tooManyFailures(sql,tin,ipHash))return {ok:false,status:429,error:"Zu viele fehlgeschlagene Prüfversuche. Versuchen Sie es später erneut."};
  const account=await findTaxpayer(sql,tin);
  const stored=String(account?.filingAccessCode||"").trim().toUpperCase();
  const ok=Boolean(account&&stored&&code&&secureEqual(stored,code));
  await recordAttempt(sql,tin,ipHash,ok);
- if(!ok)return {ok:false,status:404,error:"Taxpayer authorization could not be verified."};
+ if(!ok)return {ok:false,status:404,error:"Die Einreichungsberechtigung konnte nicht bestätigt werden."};
  return {ok:true,account};
 }
 
@@ -60,7 +60,7 @@ export async function GET(){
   await ensureDatabase();const sql=db();
   const rows=await sql`SELECT code,name,rate_basis_points,description FROM county_tax_rules WHERE active=TRUE ORDER BY sort_order,name`;
   return NextResponse.json({rules:rows});
- }catch(e){console.error("GET /api/business-filings",e);return NextResponse.json({error:"Tax filing service unavailable."},{status:500})}
+ }catch(e){console.error("GET /api/business-filings",e);return NextResponse.json({error:"Der Dienst für Steuererklärungen ist derzeit nicht verfügbar."},{status:500})}
 }
 
 export async function POST(req){
@@ -74,25 +74,25 @@ export async function POST(req){
     return NextResponse.json({valid:true,taxpayer:{taxpayerId:account.taxpayerId,economicProfileId:account.id,legalName:account.holder,classification:account.classification||null,status:account.status||null}});
   }
   const reporter=String(b.reporterName||"").trim(),noTaxpayerId=Boolean(b.noTaxpayerId);
-  if(!reporter)return NextResponse.json({error:"Reporter / responsible person is required."},{status:400});
-  if(!b.certified)return NextResponse.json({error:"Certification is required before filing."},{status:400});
+  if(!reporter)return NextResponse.json({error:"Eine einreichende bzw. verantwortliche Person ist erforderlich."},{status:400});
+  if(!b.certified)return NextResponse.json({error:"Vor der Einreichung ist die Bestätigung erforderlich."},{status:400});
 
   let businessName="",economicProfileId=null,taxpayerId=null,unregistered=false;
   if(!noTaxpayerId){
-    if(!requestedTin)return NextResponse.json({error:"A Riverside Taxpayer ID is required or the unregistered filing path must be selected."},{status:400});
+    if(!requestedTin)return NextResponse.json({error:"Eine Riverside Taxpayer ID ist erforderlich; andernfalls muss das nicht registrierte Altverfahren gewählt werden."},{status:400});
     const auth=await authorizeRegisteredFiling(sql,req,requestedTin,filingCode);
     if(!auth.ok)return NextResponse.json({error:auth.error},{status:auth.status});
     const account=auth.account;
     businessName=String(account.holder||"").trim();economicProfileId=String(account.id||"").trim()||null;taxpayerId=String(account.taxpayerId||requestedTin).trim().toUpperCase();
-    if(!businessName||!economicProfileId)return NextResponse.json({error:"The taxpayer profile is incomplete and cannot be used for public filing."},{status:409});
+    if(!businessName||!economicProfileId)return NextResponse.json({error:"Das Wirtschaftsprofil ist unvollständig und kann nicht für eine öffentliche Einreichung verwendet werden."},{status:409});
   }else{
     businessName=String(b.businessName||"").trim();
-    if(!businessName)return NextResponse.json({error:"Enter the legal taxpayer or business name for an unregistered filing."},{status:400});
+    if(!businessName)return NextResponse.json({error:"Geben Sie für eine nicht registrierte Einreichung den rechtlichen Namen des Steuerpflichtigen oder Unternehmens an."},{status:400});
     unregistered=true;
   }
 
   const rawLines=Array.isArray(b.lines)&&b.lines.length?b.lines:[{occurredAt:b.occurredAt,categoryCode:b.categoryCode,direction:b.direction,amount:b.amount,description:b.description}];
-  if(rawLines.length>25)return NextResponse.json({error:"A single filing may contain at most 25 activity lines."},{status:400});
+  if(rawLines.length>25)return NextResponse.json({error:"Eine einzelne Einreichung darf höchstens 25 Positionen enthalten."},{status:400});
 
   const rules=await sql`SELECT code,name,rate_basis_points,description FROM county_tax_rules WHERE active=TRUE`;
   const ruleMap=new Map(rules.map(r=>[r.code,r]));
@@ -101,15 +101,15 @@ export async function POST(req){
     const source=rawLines[i]||{},categoryCode=String(source.categoryCode||"").trim(),direction=source.direction==="expense"?"expense":"income",
       amount=Number(source.amount),occurredAt=String(source.occurredAt||"").trim(),description=String(source.description||"").trim();
     const rule=ruleMap.get(categoryCode);
-    if(!rule)return NextResponse.json({error:`Line ${i+1}: unknown activity classification.`},{status:400});
-    if(!validDate(occurredAt))return NextResponse.json({error:`Line ${i+1}: transaction date must be a valid four-digit year between 1900 and today.`},{status:400});
-    if(!Number.isFinite(amount)||amount<=0)return NextResponse.json({error:`Line ${i+1}: amount must be greater than zero.`},{status:400});
+    if(!rule)return NextResponse.json({error:`Line ${i+1}: unbekannte Kategorie der Geschäftstätigkeit.`},{status:400});
+    if(!validDate(occurredAt))return NextResponse.json({error:`Line ${i+1}: das Vorgangsdatum muss ein gültiges Datum mit vierstelliger Jahreszahl zwischen 1900 und heute sein.`},{status:400});
+    if(!Number.isFinite(amount)||amount<=0||!Number.isInteger(amount))return NextResponse.json({error:`Position ${i+1}: Der Betrag muss mindestens 1 voller Dollar sein; Nachkommastellen sind nicht zulässig.`},{status:400});
     const rate=Number(rule.rate_basis_points)/10000;
     lines.push({lineNumber:i+1,categoryCode,direction,amount,occurredAt,description,rule,rate,
       grossAmount:direction==="expense"?-amount:amount,
-      taxAmount:direction==="income"?Math.round(amount*rate*100)/100:0,
+      taxAmount:direction==="income"?Math.round(amount*rate):0,
       deductionAmount:direction==="expense"?amount:0,
-      deductionEffect:direction==="expense"?Math.round(amount*rate*100)/100:0});
+      deductionEffect:direction==="expense"?Math.round(amount*rate):0});
   }
 
   const sequence=await sql`SELECT nextval('county_business_filing_seq')::bigint AS value`;
@@ -131,10 +131,10 @@ export async function POST(req){
     ids.push(rows[0].public_id);
   }
 
-  const grossAssessment=Math.round(lines.reduce((n,l)=>n+l.taxAmount,0)*100)/100;
-  const deductionEffect=Math.round(lines.reduce((n,l)=>n+l.deductionEffect,0)*100)/100;
-  const netAssessment=Math.max(0,Math.round((grossAssessment-deductionEffect)*100)/100);
+  const grossAssessment=Math.round(lines.reduce((n,l)=>n+l.taxAmount,0));
+  const deductionEffect=Math.round(lines.reduce((n,l)=>n+l.deductionEffect,0));
+  const netAssessment=Math.max(0,Math.round(grossAssessment-deductionEffect));
 
   return NextResponse.json({ok:true,reference:filingReference,ledgerReferences:ids,lineCount:lines.length,grossAssessment,deductionEffect,netAssessment,linkedProfile:economicProfileId,taxpayerId,businessName});
- }catch(e){console.error("POST /api/business-filings",e);return NextResponse.json({error:"Filing could not be stored."},{status:500})}
+ }catch(e){console.error("POST /api/business-filings",e);return NextResponse.json({error:"Die Einreichung konnte nicht gespeichert werden."},{status:500})}
 }

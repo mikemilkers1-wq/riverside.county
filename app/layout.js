@@ -1,1 +1,1 @@
-import "./globals.css";export const metadata={title:"Riverside County Government",description:"Official public portal of Riverside County"};export default function RootLayout({children}){return <html lang="en"><body>{children}</body></html>}
+import "./globals.css";export const metadata={title:"Riverside County Government",description:"Öffentliches Verwaltungsportal von Riverside County"};export default function RootLayout({children}){return <html lang="de"><body>{children}</body></html>}
