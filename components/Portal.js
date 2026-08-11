@@ -64,7 +64,9 @@ export default function Portal(){
  [q,setQ]=useState(""),[receipt,setReceipt]=useState(null),[selectedAgency,setSelectedAgency]=useState(null),
  [loadNotice,setLoadNotice]=useState(""),[taxpayerMode,setTaxpayerMode]=useState("tin"),
  [taxpayerId,setTaxpayerId]=useState(""),[filingAccessCode,setFilingAccessCode]=useState(""),[taxpayer,setTaxpayer]=useState(null),[taxpayerStatus,setTaxpayerStatus]=useState("idle"),
- [filingLines,setFilingLines]=useState([{id:1,occurredAt:"",categoryCode:"",direction:"income",amount:"",description:""}]);
+ [filingLines,setFilingLines]=useState([{id:1,occurredAt:"",categoryCode:"",direction:"income",amount:"",description:""}]),
+ [portalNotice,setPortalNotice]=useState(null),[filingBusy,setFilingBusy]=useState(false),
+ [lookupResult,setLookupResult]=useState(null),[lookupBusy,setLookupBusy]=useState(false),[requestBusy,setRequestBusy]=useState(false);
 
  useEffect(()=>{
    let active=true;
@@ -107,24 +109,51 @@ export default function Portal(){
    setTaxpayerMode(mode);setTaxpayer(null);setTaxpayerStatus("idle");setFilingAccessCode("");setReceipt(null);
  }
  async function submitFiling(e){
-   e.preventDefault();const f=new FormData(e.currentTarget);const payload=Object.fromEntries(f.entries());
+   e.preventDefault();if(filingBusy)return;
+   const form=e.currentTarget,f=new FormData(form),payload=Object.fromEntries(f.entries());
    payload.certified=f.get("certified")==="on";payload.noTaxpayerId=taxpayerMode==="manual";
-   payload.taxpayerId=taxpayerMode==="tin"?taxpayerId.trim().toUpperCase():"";
-   payload.filingCode=taxpayerMode==="tin"?filingAccessCode.trim().toUpperCase():"";
+   payload.taxpayerId=taxpayerMode==="tin"?taxpayerId.trim().toUpperCase():"";payload.filingCode=taxpayerMode==="tin"?filingAccessCode.trim().toUpperCase():"";
    payload.lines=filingLines.map(({occurredAt,categoryCode,direction,amount,description})=>({occurredAt,categoryCode,direction,amount:Number(amount),description}));
-   if(taxpayerMode==="tin"&&taxpayerStatus!=="valid")return alert("Prüfen Sie Taxpayer ID und Einreichungscode, bevor Sie diese Meldung absenden.");
-   if(payload.lines.some(line=>!line.occurredAt||!line.categoryCode||!Number.isFinite(line.amount)||line.amount<=0||!Number.isInteger(line.amount)))return alert("Vervollständigen Sie für jede Position Datum, Kategorie und einen positiven Betrag in vollen Dollar. Nachkommastellen sind nicht zulässig.");
-   const r=await fetch("/api/business-filings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
-   const p=await r.json().catch(()=>({}));if(!r.ok)return alert(p.error||"Einreichung fehlgeschlagen");
-   setReceipt(p);
-   e.currentTarget.reset();
-   setFilingLines([{id:Date.now(),occurredAt:"",categoryCode:"",direction:"income",amount:"",description:""}]);
-   if(taxpayerMode==="manual"){setTaxpayer(null)}
+   if(taxpayerMode==="tin"&&taxpayerStatus!=="valid"){setPortalNotice({type:"error",title:"Einreichung noch nicht möglich",message:"Prüfen Sie zuerst Taxpayer ID und Einreichungscode. Es wurde nichts an RinCEN übertragen."});return}
+   if(payload.lines.some(line=>!line.occurredAt||!line.categoryCode||!Number.isFinite(line.amount)||line.amount<=0||!Number.isInteger(line.amount))){setPortalNotice({type:"error",title:"Unvollständige Geschäftsposition",message:"Vervollständigen Sie für jede Position Datum, Kategorie und einen positiven Betrag in vollen Dollar. Nachkommastellen sind nicht zulässig."});return}
+   setFilingBusy(true);
+   try{
+    const r=await fetch("/api/business-filings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    const result=await r.json().catch(()=>({}));
+    if(!r.ok){setPortalNotice({type:"error",title:"Einreichung nicht gespeichert",message:result.error||"RinCEN konnte die Steuererklärung nicht speichern. Es wurde keine Festsetzung erstellt."});return}
+    setReceipt(result);form.reset();setFilingLines([{id:Date.now(),occurredAt:"",categoryCode:"",direction:"income",amount:"",description:""}]);if(taxpayerMode==="manual")setTaxpayer(null);
+    setPortalNotice({type:"success",title:"Einreichung erfolgreich gespeichert",message:`RinCEN hat die Steuererklärung unter ${result.reference||"einer neuen Referenz"} erfasst. Nettofestsetzung: $${Number(result.netAssessment||0).toFixed(0)}.`});
+   }catch{setPortalNotice({type:"error",title:"RinCEN nicht erreichbar",message:"Die Verbindung zum Riverside County Department of Finance ist fehlgeschlagen. Es wurde keine Festsetzung erstellt; versuchen Sie es später erneut."})}
+   finally{setFilingBusy(false)}
+ }
+ async function lookupTaxpayer(e){
+   e.preventDefault();const f=new FormData(e.currentTarget),taxpayerId=String(f.get("taxpayerId")||"").trim().toUpperCase();
+   setLookupBusy(true);setLookupResult(null);
+   try{
+     const r=await fetch("/api/taxpayer-lookup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({taxpayerId})});
+     const p=await r.json().catch(()=>({}));
+     if(!r.ok){setLookupResult({error:p.error||"Kein öffentlicher Eintrag gefunden."});return}
+     setLookupResult(p.taxpayer);
+   }catch{setLookupResult({error:"Die öffentliche Taxpayer-Auskunft ist derzeit nicht erreichbar."})}
+   finally{setLookupBusy(false)}
+ }
+ async function submitPublicRequest(e){
+   e.preventDefault();if(requestBusy)return;const f=new FormData(e.currentTarget),payload=Object.fromEntries(f.entries());
+   setRequestBusy(true);
+   try{
+     const r=await fetch("/api/public-requests",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+     const p=await r.json().catch(()=>({}));
+     if(!r.ok){setPortalNotice({type:"error",title:"Antrag nicht übermittelt",message:p.error||"Der Antrag konnte nicht gespeichert werden."});return}
+     e.currentTarget.reset();
+     setPortalNotice({type:"success",title:"Antrag eingegangen",message:`Ihr Antrag wurde unter ${p.public_id||"einer neuen Referenz"} an RinCEN übermittelt.`});
+   }catch{setPortalNotice({type:"error",title:"RinCEN nicht erreichbar",message:"Der Antrag konnte nicht an das Department of Finance übertragen werden."})}
+   finally{setRequestBusy(false)}
  }
  function openAgency(a){setSelectedAgency(a)}
  function restartVideo(e){const v=e.currentTarget;try{v.currentTime=2;v.play().catch(()=>{})}catch{}}
 
  return <div className="site">
+  {portalNotice&&<div className="portal-notice-backdrop"><section className={`portal-notice ${portalNotice.type||"info"}`} role="dialog" aria-modal="true"><header><strong>{portalNotice.title}</strong></header><p>{portalNotice.message}</p><div className="portal-notice-actions"><button type="button" onClick={()=>setPortalNotice(null)}>Schließen</button></div></section></div>}
   <div className="official-trust-banner">
     <img className="trust-flag" src="/assets/us-flag.svg" alt="Flagge der Vereinigten Staaten"/>
     <span>An official website of the Riverside County Government.</span>
@@ -132,7 +161,7 @@ export default function Portal(){
   </div>
 
   <header className="public-nav"><div className="brand"><img src="/assets/county-government-seal.png" alt="Siegel von Riverside County"/><div><strong>RIVERSIDE COUNTY</strong><span>STATE OF CALIFORNIA</span></div></div><nav>{[
-    ["home","Startseite"],["announcements","Bekanntmachungen"],["governance","County-Verwaltung"],["agencies","County-Behörden"],["taxes","Steuern & Einreichungshilfe"],["business","Steuererklärung"]
+    ["home","Startseite"],["announcements","Bekanntmachungen"],["governance","County-Verwaltung"],["agencies","County-Behörden"],["laws","Gesetzbuch"],["lookup","Taxpayer-Auskunft"],["forms","Formulare"],["taxes","Steuern & Einreichungshilfe"],["business","Steuererklärung"]
   ].map(([k,l])=><button key={k} className={tab===k?"active":""} onClick={()=>setTab(k)}>{l}</button>)}</nav><button className="nav-help-toggle" onClick={()=>setHelp(v=>!v)}>{help?"Hilfe ausblenden":"Hilfe anzeigen"}</button></header>
   {loadNotice&&<div className="county-load-notice">{loadNotice}</div>}
 
@@ -143,6 +172,65 @@ export default function Portal(){
   {tab==="agencies"&&<main className="content"><div className="page-title"><h1>County-Behörden <Help topic="agencies" enabled={help} onOpen={openHelp}/></h1><p>Behörden und öffentliche Einrichtungen aus dem gemeinsamen Riverside County Governance Network.</p></div><input className="agency-search" value={q} onChange={e=>setQ(e.target.value)} placeholder="Behörden durchsuchen"/><div className="agency-grid">{filtered.map(a=><article key={a.id} className="agency-card" onClick={()=>openAgency(a)} tabIndex={0} onKeyDown={e=>{if(e.key==="Enter"||e.key===" ")openAgency(a)}}><div className="agency-logo"><img src={agencyLogo(a)} onError={e=>e.currentTarget.src="/assets/county-seal.png"} alt=""/></div><small>{a.category}</small><h2>{a.name}</h2><p>{a.description}</p><dl><dt>Leitung</dt><dd>{a.administrator||"—"}</dd><dt>Durchwahl</dt><dd>{a.extension||"—"}</dd><dt>Rechtsgrundlage</dt><dd>{a.legalAuthority||"—"}</dd></dl><button type="button" className="agency-open" onClick={e=>{e.stopPropagation();openAgency(a)}}>Behörde anzeigen →</button></article>)}</div></main>}
 
   {tab==="governance"&&<main className="content"><div className="page-title"><h1>County-Verwaltung <Help topic="governance" enabled={help} onOpen={openHelp}/></h1><p>Exekutive Führung und Riverside Senate.</p></div><section className="governor"><img src={gov.government?.governor?.portraitPath||"/assets/governor-seal.png"} onError={e=>e.currentTarget.src="/assets/governor-seal.png"} alt=""/><div><small>GOUVERNEUR</small><h2>{gov.government?.governor?.name||"William Bracken"}</h2><strong>{gov.government?.governor?.party||"New Founding Fathers of America"}</strong><p>{gov.government?.governor?.biography}</p></div></section><h2>State-Kabinett</h2><div className="cabinet-grid">{(gov.government?.cabinet||[]).map((x,i)=><article key={i}><strong>{x.office}</strong><span>{x.name}</span></article>)}</div><h2>Riverside Senate</h2><div className="senate-grid">{(gov.government?.senate||[]).map((x,i)=><article key={i}><strong>{x.name}</strong><span>{x.party}</span><small>{x.district} · {x.committee}</small></article>)}</div></main>}
+
+
+  {tab==="laws"&&<main className="content legal-code-page">
+    <div className="page-title"><h1>Gesetzbuch & Strafrecht</h1><p>Öffentliche Übersicht geltender Vorschriften sowie Hinweise zu steuerbezogenen Straftatbeständen.</p></div>
+    <section className="law-reference-card">
+      <h2>Bestehende Riverside-Gesetzessammlung</h2>
+      <p>Die bestehende Gesetzessammlung wird weiterhin unter der bisherigen County-Rechtsseite geführt. Die nachfolgenden steuerbezogenen Bestimmungen ergänzen diese Übersicht.</p>
+      <a href="https://riverside-county.vercel.app/gesetze" target="_blank" rel="noreferrer">Vollständige bestehende Gesetzessammlung öffnen →</a>
+    </section>
+    <section className="tax-criminal-code">
+      <h2>Steuerbezogene Straftaten</h2>
+      <article><h3>§ RC-TAX-201 — Vorsätzliche Steuerhinterziehung</h3><p>Wer vorsätzlich steuerpflichtige Einnahmen verschweigt, unrichtige Angaben macht, fingierte Abzüge geltend macht oder auf andere Weise versucht, eine rechtmäßig festgesetzte County-Steuer oder deren Zahlung zu umgehen, begeht eine Steuerstraftat. Vorsätzliche und erhebliche Fälle können als Felony verfolgt und an zuständige Strafverfolgungsbehörden abgegeben werden.</p><small>Bundesrechtlicher Bezugspunkt: 26 U.S.C. § 7201 bei Bundessteuern.</small></article>
+      <article><h3>§ RC-TAX-202 — Falsche Steuerunterlagen</h3><p>Das bewusste Einreichen materiell falscher oder manipulierter Steuerunterlagen, Erklärungen oder Nachweise kann unabhängig von einer tatsächlich eingetretenen Steuerverkürzung verfolgt werden.</p></article>
+      <article><h3>§ RC-TAX-203 — Betrug über Kommunikationssysteme</h3><p>Die bloße Nutzung des Internets, von E-Mail oder Online-Banking macht einen Steuerfall nicht automatisch zu Wire Fraud. Werden solche Kommunikationsmittel jedoch zur Durchführung eines vorsätzlichen Betrugsschemas eingesetzt, können zusätzlich einschlägige Bundesstraftatbestände in Betracht kommen.</p><small>Bundesrechtlicher Bezugspunkt: 18 U.S.C. §§ 1341, 1343.</small></article>
+      <article><h3>§ RC-TAX-204 — Verschwörung / gemeinschaftliche Steuerverkürzung</h3><p>Wer mit anderen Personen gezielt zusammenwirkt, um Steuerpflichten zu verbergen, falsche Unterlagen zu erstellen oder Behörden zu täuschen, kann zusätzlich wegen Verschwörung oder Beihilfe verfolgt werden.</p><small>Bundesrechtlicher Bezugspunkt: 18 U.S.C. § 371.</small></article>
+      <article><h3>§ RC-TAX-205 — Structuring und Geldwäsche</h3><p>Das absichtliche Aufteilen von Bargeld- oder Banktransaktionen zur Umgehung gesetzlicher Meldepflichten kann unabhängig vom zugrunde liegenden Steuerfall eine eigenständige Straftat darstellen. Geldwäschetatbestände setzen zusätzliche gesetzliche Voraussetzungen voraus.</p><small>Bundesrechtliche Bezugspunkte: 31 U.S.C. § 5324 sowie, soweit einschlägig, 18 U.S.C. §§ 1956–1957.</small></article>
+      <article><h3>§ RC-TAX-206 — Nichtzahlung nach Fälligkeit</h3><p>Eine bloße offene Steuerforderung ist nicht automatisch Betrug. RinCEN dokumentiert jedoch Fälligkeit und den Zeitpunkt, zu dem nach County-Regelung eine strafrechtliche Prüfung wegen fortgesetzter vorsätzlicher Nichtzahlung eröffnet werden kann. Irrtümer, technische Zahlungsfehler und rechtzeitig gestellte Rechtsbehelfe sind vor strafrechtlichen Maßnahmen zu prüfen.</p></article>
+    </section>
+    <section className="law-disclaimer"><strong>Hinweis</strong><p>Bundesrechtliche Verweise dienen der Einordnung. Ob Bundeszuständigkeit besteht, hängt von den tatsächlichen Umständen und den gesetzlichen Tatbestandsmerkmalen ab; sie entsteht nicht allein dadurch, dass eine Steuererklärung online übermittelt wurde.</p></section>
+  </main>}
+
+  {tab==="lookup"&&<main className="content taxpayer-lookup-page">
+    <div className="page-title"><h1>Öffentliche Taxpayer-Auskunft</h1><p>Grundlegende Registerauskunft anhand einer Riverside Taxpayer ID. Vertrauliche Zugangsdaten, Steuerstände, Zahlungen und interne Vermerke werden nicht angezeigt.</p></div>
+    <form className="public-lookup-form" onSubmit={lookupTaxpayer}>
+      <label>Riverside Taxpayer ID<input name="taxpayerId" placeholder="RC-TIN-2026-000001" required/></label>
+      <button disabled={lookupBusy}>{lookupBusy?"Suche läuft …":"Suchen"}</button>
+    </form>
+    {lookupResult&&<section className={`lookup-result ${lookupResult.error?"invalid":""}`}>
+      {lookupResult.error?<><strong>Keine Auskunft</strong><p>{lookupResult.error}</p></>:<>
+        <small>ÖFFENTLICHER REGISTERDATENSATZ</small><h2>{lookupResult.name}</h2>
+        <dl><dt>Taxpayer ID</dt><dd>{lookupResult.taxpayerId}</dd><dt>Typ</dt><dd>{lookupResult.classification||"—"}</dd><dt>Status</dt><dd>{lookupResult.status||"—"}</dd></dl>
+        <p>Einreichungscode, interne Notizen, Steuerforderungen und Zahlungsdaten sind nicht Bestandteil dieser öffentlichen Auskunft.</p>
+      </>}
+    </section>}
+  </main>}
+
+  {tab==="forms"&&<main className="content public-forms-page">
+    <div className="page-title"><h1>Formulare & Eingaben an Riverside County</h1><p>Anträge, Petitionen, steuerbezogene Korrekturen und Eingaben werden registriert und an die zuständige Stelle weitergeleitet.</p></div>
+    <form className="county-public-request-form" onSubmit={submitPublicRequest}>
+      <div className="row two">
+        <label>Antragsart<select name="requestType" required>
+          <option value="">Bitte auswählen</option>
+          <option value="TAX_REFUND_REVIEW">Prüfung einer möglichen Steuerüberzahlung / Rückerstattung</option>
+          <option value="TAXPAYER_ID_RESET">Neuausgabe einer Taxpayer ID</option>
+          <option value="FILING_ACCESS_RESET">Neuausgabe des Einreichungscodes</option>
+          <option value="PETITION">Petition an Riverside County</option>
+          <option value="GOVERNOR_PLEADING">Eingabe / Petition an den Gouverneur</option>
+          <option value="GENERAL_ADMINISTRATIVE_REQUEST">Allgemeiner Verwaltungsantrag</option>
+        </select></label>
+        <label>Taxpayer ID, falls vorhanden<input name="taxpayerId" placeholder="RC-TIN-..."/></label>
+      </div>
+      <div className="row two"><label>Name der antragstellenden Person<input name="applicantName" required/></label><label>Kontakt / Rückkanal<input name="contact"/></label></div>
+      <label>Betreff<input name="subject" required/></label>
+      <label>Begründung / Sachverhalt<textarea name="statement" rows="8" required placeholder="Beschreiben Sie den Sachverhalt, relevante Daten, Referenzen und die gewünschte Maßnahme."/></label>
+      <label>Rechtsbezug / Referenz<input name="legalReference" placeholder="z. B. RC-TAX-201, Zahlungsreferenz, Aktenzeichen"/></label>
+      <div className="form-legal-note"><strong>Wichtiger Hinweis</strong><p>Ein Antrag auf neue Taxpayer ID oder neuen Einreichungscode löst keine automatische Änderung aus. RinCEN prüft die Identität und Berechtigung zunächst manuell. Bei Verdacht auf Identitätsdiebstahl sollten bekannte Referenzen, betroffene Vorgänge und ein sicherer Rückkanal angegeben werden.</p></div>
+      <button className="submit-return" disabled={requestBusy}>{requestBusy?"WIRD ÜBERMITTELT …":"ANTRAG EINREICHEN"}</button>
+    </form>
+  </main>}
 
   {tab==="taxes"&&<main className="content tax-guide"><div className="page-title"><h1>Steuern & Einreichungshilfe <Help topic="taxes" enabled={help} onOpen={openHelp}/></h1><p>Hinweise zur Auswahl der passenden Kategorie und Buchungsart für Geschäftsvorgänge in Riverside County.</p></div>
     <section className="tax-guide-intro">

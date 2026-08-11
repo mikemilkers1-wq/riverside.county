@@ -93,3 +93,14 @@
  .registered-auth-grid{grid-template-columns:1fr}
  .taxpayer-verify-row{align-items:stretch;flex-direction:column}
 }
+
+.portal-notice-backdrop{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;padding:24px;background:rgba(0,33,71,.28)}
+.portal-notice{width:min(560px,94vw);background:#fff;border:1px solid #8ca0b3;box-shadow:0 18px 55px rgba(0,33,71,.25);color:#1a2b4c}.portal-notice header{padding:14px 18px;background:#002147;color:#fff;font-size:16px}.portal-notice.error header{background:#7f1d1d}.portal-notice.success header{background:#14532d}.portal-notice p{margin:0;padding:20px 18px;line-height:1.55;font-size:14px}.portal-notice-actions{display:flex;justify-content:flex-end;padding:0 18px 18px}.portal-notice-actions button{min-width:110px;padding:9px 16px;border:1px solid #005ea2;background:#005ea2;color:#fff;font-weight:700;cursor:pointer}.tax-form button.submit:disabled{opacity:.62;cursor:wait}
+
+/* v1.0.8 public lawbook, taxpayer directory and forms */
+.law-reference-card,.law-disclaimer,.lookup-result,.public-lookup-form,.county-public-request-form{border:1px solid #aebac4;background:#fff;padding:18px;margin:16px 0}
+.law-reference-card a{display:inline-block;margin-top:8px;font-weight:800;color:#005ea2}
+.tax-criminal-code{display:grid;gap:12px}.tax-criminal-code article{border:1px solid #c6d0d8;background:#f8fafb;padding:16px}.tax-criminal-code h3{margin:0 0 7px;color:#002147}.tax-criminal-code small{display:block;margin-top:8px;color:#536979}
+.public-lookup-form{display:flex;gap:12px;align-items:end}.public-lookup-form label{flex:1;display:grid;gap:5px}.public-lookup-form input,.county-public-request-form input,.county-public-request-form select,.county-public-request-form textarea{width:100%}
+.lookup-result.invalid{border-left:4px solid #a9302a}.lookup-result dl{display:grid;grid-template-columns:150px 1fr;gap:7px 14px}
+.county-public-request-form{display:grid;gap:14px}.county-public-request-form label{display:grid;gap:5px;font-weight:700}.form-legal-note{background:#fff8dc;border:1px solid #c6a44a;padding:12px}
